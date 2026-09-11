@@ -140,10 +140,50 @@
     width:100%; flex:1; border:1px solid rgba(255,255,255,0.15); border-radius:10px;
     background:rgba(255,255,255,0.03); filter: invert(0);
   }
+  .calStatus{
+    display:none; font-size:11px; color:var(--dim); margin-bottom:6px; min-height:14px;
+  }
+  body.edit-mode .calStatus{ display:block; }
+  .calBody{ flex:1; display:flex; flex-direction:column; min-height:0; }
   .calw .calEmpty{
     flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
     color:var(--dim); font-size:14px; border:1px dashed rgba(255,255,255,0.25); border-radius:10px; padding:20px;
   }
+  .calAgenda{
+    flex:1; display:flex; gap:16px; min-height:0;
+  }
+  .calGrid{
+    flex:0 0 46%;
+    display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
+    align-content:start;
+  }
+  .calGrid .calGridHead{
+    text-align:center; font-size:11px; color:var(--dim); letter-spacing:0.05em; padding-bottom:4px;
+  }
+  .calGrid .calMonthLabel{
+    grid-column:1 / -1; font-size:16px; font-weight:600; margin-bottom:6px; letter-spacing:0.02em;
+  }
+  .calGrid .calDay{
+    aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:12px; border-radius:6px; color:var(--dim); position:relative;
+  }
+  .calGrid .calDay.inMonth{ color:#fff; }
+  .calGrid .calDay.today{ background:rgba(255,255,255,0.2); font-weight:700; color:#fff; }
+  .calGrid .calDay .dot{
+    width:4px; height:4px; border-radius:50%; background:#fff; margin-top:2px; opacity:0.8;
+  }
+  .calList{
+    flex:1; overflow-y:auto; min-height:0;
+  }
+  .calList::-webkit-scrollbar{ width:5px; }
+  .calList::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.2); border-radius:3px; }
+  .calList .calListTitle{ font-size:11px; color:var(--dim); letter-spacing:0.08em; margin-bottom:8px; }
+  .calList .calEvt{
+    display:flex; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .calList .calEvt .evtWhen{ flex:0 0 78px; font-size:12px; color:var(--dim); }
+  .calList .calEvt .evtName{ font-size:13px; }
+  .calList .calEmptyList{ color:var(--dim); font-size:12px; padding:8px 0; }
 
   /* ---------- ticker ---------- */
   #tickerWrap{
@@ -212,11 +252,18 @@
   <div class="widget calw" id="w-calendar" data-id="calendar">
     <div class="dragHandle">⠿ move</div>
     <div class="calLinkRow">
-      <input type="text" id="calLinkInput" placeholder="Paste your calendar's embed link here (Google Calendar → Settings → Integrate calendar → Embed code URL)">
+      <input type="text" id="calLinkInput" placeholder="Paste a Google Calendar embed link, or an Apple/iCloud (or Outlook) public calendar link">
       <button id="calLinkSave">Save</button>
     </div>
-    <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar's embed link above.</div>
-    <iframe id="calFrame" style="display:none;"></iframe>
+    <div class="calStatus" id="calStatus"></div>
+    <div class="calBody" id="calBody">
+      <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.</div>
+      <iframe id="calFrame" style="display:none;"></iframe>
+      <div class="calAgenda" id="calAgenda" style="display:none;">
+        <div class="calGrid" id="calGrid"></div>
+        <div class="calList" id="calList"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -488,27 +535,275 @@
     });
   });
 
-  /* ---------------- calendar link ---------------- */
-  function applyCalLink(){
-    var frame = document.getElementById('calFrame');
-    var empty = document.getElementById('calEmpty');
-    if(state.calLink){
-      frame.src = state.calLink;
-      frame.style.display = 'block';
-      empty.style.display = 'none';
-    } else {
-      frame.style.display = 'none';
-      empty.style.display = 'flex';
-    }
+  /* ---------------- calendar link (Google embed OR Apple/iCloud/Outlook ICS feed) ---------------- */
+  var calFrame = document.getElementById('calFrame');
+  var calEmpty = document.getElementById('calEmpty');
+  var calAgenda = document.getElementById('calAgenda');
+  var calStatus = document.getElementById('calStatus');
+  var calGrid = document.getElementById('calGrid');
+  var calList = document.getElementById('calList');
+  var calRefreshTimer = null;
+
+  function showCalPane(which){
+    calFrame.style.display = which === 'frame' ? 'block' : 'none';
+    calAgenda.style.display = which === 'agenda' ? 'flex' : 'none';
+    calEmpty.style.display = which === 'empty' ? 'flex' : 'none';
   }
-  applyCalLink();
+
+  function detectCalMode(url){
+    return /calendar\.google\.com/i.test(url) ? 'google' : 'ics';
+  }
+  function normalizeIcsUrl(url){
+    if(url.indexOf('webcal://') === 0) return 'https://' + url.slice('webcal://'.length);
+    return url;
+  }
+
+  function unfoldIcs(text){
+    return text.replace(/\r\n/g, '\n').split('\n').reduce(function(lines, line){
+      if((line[0] === ' ' || line[0] === '\t') && lines.length){
+        lines[lines.length-1] += line.slice(1);
+      } else {
+        lines.push(line);
+      }
+      return lines;
+    }, []);
+  }
+
+  function parseIcsDate(val, isDateOnly){
+    // val like 20260101 or 20260101T090000 or 20260101T090000Z
+    var y = +val.slice(0,4), mo = +val.slice(4,6)-1, d = +val.slice(6,8);
+    if(isDateOnly || val.length <= 8){ return {date:new Date(y,mo,d), allDay:true}; }
+    var h = +val.slice(9,11), mi = +val.slice(11,13), s = +val.slice(13,15) || 0;
+    if(val[val.length-1] === 'Z'){
+      return {date:new Date(Date.UTC(y,mo,d,h,mi,s)), allDay:false};
+    }
+    return {date:new Date(y,mo,d,h,mi,s), allDay:false};
+  }
+
+  function parseIcs(text){
+    var lines = unfoldIcs(text);
+    var events = [];
+    var cur = null;
+    lines.forEach(function(line){
+      if(line === 'BEGIN:VEVENT'){ cur = {}; return; }
+      if(line === 'END:VEVENT'){ if(cur) events.push(cur); cur = null; return; }
+      if(!cur) return;
+      var idx = line.indexOf(':');
+      if(idx === -1) return;
+      var keyPart = line.slice(0, idx);
+      var value = line.slice(idx+1);
+      var key = keyPart.split(';')[0];
+      var isDateOnly = /VALUE=DATE(?!-TIME)/.test(keyPart);
+      if(key === 'SUMMARY') cur.summary = value.replace(/\\,/g,',').replace(/\\n/gi,' ');
+      else if(key === 'DTSTART') cur.dtstart = parseIcsDate(value, isDateOnly);
+      else if(key === 'DTEND') cur.dtend = parseIcsDate(value, isDateOnly);
+      else if(key === 'RRULE') cur.rrule = value;
+      else if(key === 'EXDATE') { cur.exdate = cur.exdate || []; cur.exdate.push(value.split(',')[0]); }
+    });
+    return events;
+  }
+
+  function parseRrule(str){
+    var parts = {};
+    str.split(';').forEach(function(p){
+      var kv = p.split('=');
+      parts[kv[0]] = kv[1];
+    });
+    return parts;
+  }
+  var DOW = {SU:0,MO:1,TU:2,WE:3,TH:4,FR:5,SA:6};
+
+  function addUnit(date, freq, interval){
+    var d = new Date(date);
+    if(freq === 'DAILY') d.setDate(d.getDate()+interval);
+    else if(freq === 'WEEKLY') d.setDate(d.getDate()+7*interval);
+    else if(freq === 'MONTHLY') d.setMonth(d.getMonth()+interval);
+    else if(freq === 'YEARLY') d.setFullYear(d.getFullYear()+interval);
+    return d;
+  }
+
+  // expand an event into individual occurrence dates within [rangeStart, rangeEnd]
+  function expandEvent(ev, rangeStart, rangeEnd){
+    var out = [];
+    if(!ev.dtstart) return out;
+    var duration = (ev.dtend ? ev.dtend.date - ev.dtstart.date : 0);
+    if(!ev.rrule){
+      if(ev.dtstart.date <= rangeEnd && (ev.dtend ? ev.dtend.date : ev.dtstart.date) >= rangeStart){
+        out.push({start:ev.dtstart.date, allDay:ev.dtstart.allDay, summary:ev.summary||'(untitled)'});
+      }
+      return out;
+    }
+    var r = parseRrule(ev.rrule);
+    var freq = r.FREQ;
+    var interval = parseInt(r.INTERVAL || '1', 10);
+    var count = r.COUNT ? parseInt(r.COUNT,10) : null;
+    var until = r.UNTIL ? parseIcsDate(r.UNTIL, r.UNTIL.length<=8).date : null;
+    var exSet = {};
+    (ev.exdate||[]).forEach(function(x){ exSet[x.slice(0,8)] = true; });
+    var byday = r.BYDAY ? r.BYDAY.split(',') : null;
+    var cursor = new Date(ev.dtstart.date);
+    var n = 0, safety = 0;
+    while(cursor <= rangeEnd && safety < 500){
+      safety++;
+      if(count !== null && n >= count) break;
+      if(until && cursor > until) break;
+      var occurrences = [cursor];
+      if(freq === 'WEEKLY' && byday){
+        occurrences = byday.map(function(code){
+          var target = DOW[code];
+          var base = new Date(cursor);
+          var diff = (target - base.getDay() + 7) % 7;
+          var dd = new Date(base); dd.setDate(base.getDate()+diff);
+          return dd;
+        });
+      }
+      occurrences.forEach(function(occDate){
+        if(count !== null && n >= count) return;
+        if(until && occDate > until) return;
+        var key = occDate.getFullYear()+String(occDate.getMonth()+1).padStart(2,'0')+String(occDate.getDate()).padStart(2,'0');
+        if(exSet[key]) return;
+        if(occDate >= rangeStart && occDate <= rangeEnd){
+          var start = new Date(occDate);
+          if(!ev.dtstart.allDay){
+            start.setHours(ev.dtstart.date.getHours(), ev.dtstart.date.getMinutes(), 0, 0);
+          }
+          out.push({start:start, allDay:ev.dtstart.allDay, summary:ev.summary||'(untitled)'});
+        }
+        n++;
+      });
+      cursor = addUnit(cursor, freq, interval);
+    }
+    return out;
+  }
+
+  function fetchWithFallback(url){
+    var attempts = [
+      url,
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+      'https://corsproxy.io/?' + encodeURIComponent(url)
+    ];
+    var i = 0;
+    function tryNext(){
+      if(i >= attempts.length) return Promise.resolve(null);
+      var attemptUrl = attempts[i]; i++;
+      return fetch(attemptUrl, {cache:'no-store'}).then(function(res){
+        if(!res.ok) return tryNext();
+        return res.text().then(function(txt){
+          if(txt && txt.indexOf('BEGIN:VCALENDAR') !== -1) return txt;
+          return tryNext();
+        });
+      }).catch(tryNext);
+    }
+    return tryNext();
+  }
+
+  var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DOW_LABELS = ['S','M','T','W','T','F','S'];
+
+  function renderAgenda(events){
+    var now = new Date();
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var gridStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+    var monthEnd = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    var gridEnd = new Date(monthEnd);
+    gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay()));
+    var listEnd = new Date(todayStart); listEnd.setDate(listEnd.getDate() + 60);
+    var rangeEnd = gridEnd > listEnd ? gridEnd : listEnd;
+
+    var occurrences = [];
+    events.forEach(function(ev){
+      occurrences = occurrences.concat(expandEvent(ev, gridStart, rangeEnd));
+    });
+
+    // ---- month grid ----
+    var dayHasEvent = {};
+    occurrences.forEach(function(o){
+      var k = o.start.getFullYear()+'-'+o.start.getMonth()+'-'+o.start.getDate();
+      dayHasEvent[k] = true;
+    });
+    var html = '<div class="calMonthLabel">' + MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear() + '</div>';
+    DOW_LABELS.forEach(function(l){ html += '<div class="calGridHead">'+l+'</div>'; });
+    var cur = new Date(gridStart);
+    while(cur <= gridEnd){
+      var inMonth = cur.getMonth() === now.getMonth();
+      var isToday = cur.getTime() === todayStart.getTime();
+      var k = cur.getFullYear()+'-'+cur.getMonth()+'-'+cur.getDate();
+      html += '<div class="calDay' + (inMonth?' inMonth':'') + (isToday?' today':'') + '">' + cur.getDate() +
+        (dayHasEvent[k] ? '<span class="dot"></span>' : '') + '</div>';
+      cur.setDate(cur.getDate()+1);
+    }
+    calGrid.innerHTML = html;
+
+    // ---- upcoming list ----
+    var upcoming = occurrences.filter(function(o){
+      return o.allDay ? o.start >= todayStart : o.start >= now || (o.start >= todayStart && o.allDay);
+    }).sort(function(a,b){ return a.start - b.start; }).slice(0, 10);
+    var listHtml = '<div class="calListTitle">UPCOMING</div>';
+    if(upcoming.length === 0){
+      listHtml += '<div class="calEmptyList">Nothing on the calendar in the next 60 days.</div>';
+    } else {
+      upcoming.forEach(function(o){
+        var when;
+        if(o.allDay){
+          when = (o.start.getTime() === todayStart.getTime()) ? 'Today' : (MONTH_NAMES[o.start.getMonth()].slice(0,3) + ' ' + o.start.getDate());
+        } else {
+          var h = o.start.getHours(), ap = h>=12?'PM':'AM', h12=h%12; if(h12===0) h12=12;
+          var mm = String(o.start.getMinutes()).padStart(2,'0');
+          var dayLabel = (o.start.toDateString() === now.toDateString()) ? 'Today' : (MONTH_NAMES[o.start.getMonth()].slice(0,3) + ' ' + o.start.getDate());
+          when = dayLabel + ' ' + h12 + ':' + mm + ap;
+        }
+        listHtml += '<div class="calEvt"><div class="evtWhen">'+when+'</div><div class="evtName">'+escapeHtml(o.summary)+'</div></div>';
+      });
+    }
+    calList.innerHTML = listHtml;
+    showCalPane('agenda');
+  }
+
+  function escapeHtml(s){
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function loadCalendar(){
+    if(calRefreshTimer) clearTimeout(calRefreshTimer);
+    if(!state.calLink){
+      showCalPane('empty');
+      calStatus.textContent = '';
+      return;
+    }
+    var mode = detectCalMode(state.calLink);
+    if(mode === 'google'){
+      calFrame.src = state.calLink;
+      showCalPane('frame');
+      calStatus.textContent = 'Google Calendar linked.';
+      return;
+    }
+    calStatus.textContent = 'Loading calendar…';
+    var url = normalizeIcsUrl(state.calLink);
+    fetchWithFallback(url).then(function(text){
+      if(!text){
+        calStatus.textContent = "Couldn't load that calendar link. Double-check it's a public share link and try again.";
+        showCalPane('empty');
+        calEmpty.textContent = "Couldn't load that calendar. Make sure it's a public link (in Apple Calendar: Calendar app → right-click the calendar → Share Calendar → Public Calendar → Copy Link), then save it again.";
+        return;
+      }
+      var events = parseIcs(text);
+      renderAgenda(events);
+      calStatus.textContent = 'Calendar linked · ' + events.length + ' event(s) found.';
+      calRefreshTimer = setTimeout(loadCalendar, 15 * 60 * 1000);
+    });
+  }
+
+  loadCalendar();
   document.getElementById('calLinkInput').addEventListener('focus', beginEdit);
   document.getElementById('calLinkSave').addEventListener('click', function(){
     beginEdit();
     var v = document.getElementById('calLinkInput').value.trim();
     state.calLink = v;
     saveState();
-    applyCalLink();
+    loadCalendar();
     commitEdit();
   });
 
@@ -628,7 +923,7 @@
     document.getElementById('calLinkInput').value = state.calLink;
     syncFontControls();
     applyFonts();
-    applyCalLink();
+    loadCalendar();
     renderTicker();
     tickClock();
   }
