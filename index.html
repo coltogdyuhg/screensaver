@@ -137,8 +137,9 @@
     padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
   }
   .calw iframe{
-    width:100%; flex:1; border:1px solid rgba(255,255,255,0.15); border-radius:10px;
-    background:rgba(255,255,255,0.03); filter: invert(0);
+    width:100%; flex:1; border:1px solid rgba(255,255,255,0.18); border-radius:10px;
+    background:#000;
+    filter: invert(94%) hue-rotate(180deg) brightness(0.92) contrast(0.9);
   }
   .calStatus{
     display:none; font-size:11px; color:var(--dim); margin-bottom:6px; min-height:14px;
@@ -252,7 +253,7 @@
   <div class="widget calw" id="w-calendar" data-id="calendar">
     <div class="dragHandle">⠿ move</div>
     <div class="calLinkRow">
-      <input type="text" id="calLinkInput" placeholder="Paste a Google Calendar embed link, or an Apple/iCloud (or Outlook) public calendar link">
+      <input type="text" id="calLinkInput" placeholder="Paste a Google Calendar link OR the full <iframe> embed code, or an Apple/iCloud public calendar link">
       <button id="calLinkSave">Save</button>
     </div>
     <div class="calStatus" id="calStatus"></div>
@@ -553,6 +554,14 @@
   function detectCalMode(url){
     return /calendar\.google\.com/i.test(url) ? 'google' : 'ics';
   }
+  function extractEmbedLink(raw){
+    raw = (raw || '').trim();
+    var match = raw.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+    if(match){
+      return match[1].replace(/&amp;/g, '&');
+    }
+    return raw;
+  }
   function normalizeIcsUrl(url){
     if(url.indexOf('webcal://') === 0) return 'https://' + url.slice('webcal://'.length);
     return url;
@@ -811,8 +820,9 @@
   document.getElementById('calLinkInput').addEventListener('focus', beginEdit);
   document.getElementById('calLinkSave').addEventListener('click', function(){
     beginEdit();
-    var v = document.getElementById('calLinkInput').value.trim();
+    var v = extractEmbedLink(document.getElementById('calLinkInput').value);
     state.calLink = v;
+    document.getElementById('calLinkInput').value = v;
     saveState();
     loadCalendar();
     commitEdit();
