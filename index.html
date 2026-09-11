@@ -1,292 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard</title>
-<style>
-  :root{
-    --white: #ffffff;
-    --dim: rgba(255,255,255,0.55);
-    --faint: rgba(255,255,255,0.18);
-    --font: 'Helvetica Neue', Arial, sans-serif;
-  }
-  *{box-sizing:border-box;}
-  html,body{
-    margin:0; padding:0; width:100%; height:100%;
-    background:#000; color:var(--white); font-family:var(--font);
-    overflow:hidden;
-  }
-  #stars{position:fixed; inset:0; z-index:0; display:block;}
-
-  #stage{
-    position:fixed; inset:0; z-index:1;
-  }
-
-  .widget{
-    position:absolute;
-    color:var(--white);
-    user-select:none;
-    font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
-  }
-
-  /* ---------- top bar controls ---------- */
-  #topControls{
-    position:fixed; top:14px; right:16px; z-index:50;
-    display:flex; gap:10px;
-  }
-  #editControls{
-    position:fixed; top:14px; left:16px; z-index:50;
-    display:flex; gap:10px; align-items:center;
-  }
-  .iconBtn{
-    background:rgba(255,255,255,0.08);
-    border:1px solid rgba(255,255,255,0.25);
-    color:var(--white);
-    border-radius:8px;
-    width:38px; height:38px;
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer;
-    font-size:16px;
-    backdrop-filter:blur(4px);
-    transition:background 0.15s ease;
-  }
-  .iconBtn:hover{background:rgba(255,255,255,0.18);}
-  .iconBtn.active{background:rgba(255,255,255,0.35); border-color:#fff;}
-  .iconBtn.disabled{opacity:0.3; cursor:default; pointer-events:none;}
-  #editHint{
-    font-size:12px; color:var(--dim); letter-spacing:0.02em;
-    display:none;
-  }
-  body.edit-mode #editHint{display:inline;}
-
-  /* ---------- drag handle, shown only in edit mode ---------- */
-  .dragHandle{
-    display:none;
-    position:absolute; top:-22px; left:0;
-    font-size:11px; color:#000; background:var(--white);
-    padding:3px 8px; border-radius:6px 6px 0 0;
-    cursor:grab; letter-spacing:0.03em;
-  }
-  body.edit-mode .widget{outline:1px dashed rgba(255,255,255,0.35); border-radius:10px;}
-  body.edit-mode .dragHandle{display:block;}
-  body.edit-mode .widget.dragging{outline:1px solid #fff;}
-
-  /* ---------- countdown widgets ---------- */
-  .countdown{
-    text-align:center;
-    padding:6px 10px;
-  }
-  .countdown .cd-label{
-    font-size:calc(15px * var(--wscale, 1));
-    letter-spacing:0.08em;
-    outline:none;
-    display:inline-block;
-    min-width:20px;
-  }
-  .countdown .cd-colon{ margin:0 4px; opacity:0.6; }
-  .countdown .cd-days{
-    font-size:calc(15px * var(--wscale, 1));
-    font-weight:600;
-  }
-  .countdown .cd-sub{
-    font-size:10px; color:var(--dim); margin-top:2px; letter-spacing:0.05em;
-  }
-  .countdown .cd-editrow{
-    display:none; margin-top:8px;
-  }
-  body.edit-mode .countdown .cd-editrow{ display:flex; justify-content:center; gap:6px; }
-  .countdown input[type="date"]{
-    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
-    color:#fff; font-size:11px; border-radius:5px; padding:3px 5px; font-family:var(--font);
-  }
-  body.edit-mode .cd-label{ background:rgba(255,255,255,0.08); border-radius:4px; padding:0 4px; cursor:text; }
-
-  /* ---------- per-widget font controls ---------- */
-  .fontRow{ display:none; margin-top:8px; gap:6px; justify-content:center; align-items:center; }
-  body.edit-mode .fontRow{ display:flex; }
-  .fontRow select, .fontRow input[type="range"]{
-    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
-    color:#fff; font-size:10px; border-radius:5px; padding:3px 4px; font-family:var(--font);
-  }
-  .fontRow select{ max-width:96px; }
-  .fontRow input[type="range"]{ width:70px; }
-
-  /* ---------- clock widget ---------- */
-  .clockw{ padding:10px; }
-  .clockw .time{
-    font-size:calc(64px * var(--wscale, 1)); font-weight:200; line-height:1; letter-spacing:-0.01em;
-  }
-  .clockw .time .ampm{ font-size:calc(22px * var(--wscale, 1)); font-weight:300; margin-left:6px; color:var(--dim);}
-  .clockw .day{ font-size:calc(24px * var(--wscale, 1)); font-weight:500; margin-top:10px; letter-spacing:0.04em; }
-  .clockw .date{ font-size:calc(16px * var(--wscale, 1)); color:var(--dim); margin-top:2px; letter-spacing:0.03em; }
-  .clockw .fontRow{ justify-content:flex-start; }
-
-  /* ---------- calendar widget ---------- */
-  .calw{ display:flex; flex-direction:column; }
-  .calw .calLinkRow{
-    display:none; gap:6px; margin-bottom:6px; align-items:center;
-  }
-  body.edit-mode .calw .calLinkRow{ display:flex; }
-  .calw .calLinkRow input{
-    flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
-    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
-  }
-  .calw .calLinkRow button{
-    background:var(--white); color:#000; border:none; border-radius:6px;
-    padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
-  }
-  .calw iframe{
-    width:100%; flex:1; border:1px solid rgba(255,255,255,0.18); border-radius:10px;
-    background:#000;
-    filter: invert(94%) hue-rotate(180deg) brightness(0.92) contrast(0.9);
-  }
-  .calStatus{
-    display:none; font-size:11px; color:var(--dim); margin-bottom:6px; min-height:14px;
-  }
-  body.edit-mode .calStatus{ display:block; }
-  .calBody{ flex:1; display:flex; flex-direction:column; min-height:0; }
-  .calw .calEmpty{
-    flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
-    color:var(--dim); font-size:14px; border:1px dashed rgba(255,255,255,0.25); border-radius:10px; padding:20px;
-  }
-  .calAgenda{
-    flex:1; display:flex; gap:16px; min-height:0;
-  }
-  .calGrid{
-    flex:0 0 46%;
-    display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
-    align-content:start;
-  }
-  .calGrid .calGridHead{
-    text-align:center; font-size:11px; color:var(--dim); letter-spacing:0.05em; padding-bottom:4px;
-  }
-  .calGrid .calMonthLabel{
-    grid-column:1 / -1; font-size:16px; font-weight:600; margin-bottom:6px; letter-spacing:0.02em;
-  }
-  .calGrid .calDay{
-    aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    font-size:12px; border-radius:6px; color:var(--dim); position:relative;
-  }
-  .calGrid .calDay.inMonth{ color:#fff; }
-  .calGrid .calDay.today{ background:rgba(255,255,255,0.2); font-weight:700; color:#fff; }
-  .calGrid .calDay .dot{
-    width:4px; height:4px; border-radius:50%; background:#fff; margin-top:2px; opacity:0.8;
-  }
-  .calList{
-    flex:1; overflow-y:auto; min-height:0;
-  }
-  .calList::-webkit-scrollbar{ width:5px; }
-  .calList::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.2); border-radius:3px; }
-  .calList .calListTitle{ font-size:11px; color:var(--dim); letter-spacing:0.08em; margin-bottom:8px; }
-  .calList .calEvt{
-    display:flex; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.08);
-  }
-  .calList .calEvt .evtWhen{ flex:0 0 78px; font-size:12px; color:var(--dim); }
-  .calList .calEvt .evtName{ font-size:13px; }
-  .calList .calEmptyList{ color:var(--dim); font-size:12px; padding:8px 0; }
-
-  /* ---------- ticker ---------- */
-  #tickerWrap{
-    position:fixed; left:0; right:0; bottom:0; height:56px; z-index:20;
-    background:rgba(0,0,0,0.55); border-top:1px solid rgba(255,255,255,0.15);
-    overflow:hidden; display:flex; align-items:center;
-    backdrop-filter:blur(3px);
-    font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
-  }
-  #tickerTrack{
-    white-space:nowrap; position:absolute; will-change:transform;
-    font-size:calc(20px * var(--wscale, 1)); letter-spacing:0.02em; padding-left:100%;
-  }
-  #tickerEdit{
-    display:none; position:fixed; left:16px; right:16px; bottom:64px; z-index:50;
-    background:rgba(20,20,20,0.9); border:1px solid rgba(255,255,255,0.25);
-    border-radius:10px; padding:10px 14px; gap:10px 14px; align-items:center; flex-wrap:wrap;
-  }
-  body.edit-mode #tickerEdit{ display:flex; }
-  #tickerEdit input[type="text"]{
-    flex:1; min-width:160px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
-    color:#fff; font-size:13px; border-radius:6px; padding:7px 10px; font-family:var(--font);
-  }
-  #tickerEdit label{ font-size:11px; color:var(--dim); display:flex; align-items:center; gap:6px; white-space:nowrap; }
-  #tickerEdit input[type="range"]{ width:110px; }
-  #tickerEdit select{
-    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
-    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
-  }
-</style>
-</head>
-<body>
-
-<canvas id="stars"></canvas>
-
-<div id="stage">
-  <div class="widget countdown" id="w-vacation" data-id="vacation">
-    <div class="dragHandle">⠿ move</div>
-    <span class="cd-label" contenteditable="false" data-key="vacation-label">Vacation</span><span class="cd-colon">::</span><span class="cd-days">--</span>
-    <div class="cd-editrow"><input type="date" class="cd-date" data-key="vacation-date"></div>
-    <div class="fontRow"><select class="font-select" data-id="vacation"></select><input type="range" class="font-scale" data-id="vacation" min="0.6" max="2" step="0.1"></div>
-  </div>
-
-  <div class="widget countdown" id="w-christmas" data-id="christmas">
-    <div class="dragHandle">⠿ move</div>
-    <span class="cd-label" contenteditable="false" data-key="christmas-label">Christmas</span><span class="cd-colon">::</span><span class="cd-days">--</span>
-    <div class="cd-editrow"><input type="date" class="cd-date" data-key="christmas-date"></div>
-    <div class="fontRow"><select class="font-select" data-id="christmas"></select><input type="range" class="font-scale" data-id="christmas" min="0.6" max="2" step="0.1"></div>
-  </div>
-
-  <div class="widget countdown" id="w-halloween" data-id="halloween">
-    <div class="dragHandle">⠿ move</div>
-    <span class="cd-label" contenteditable="false" data-key="halloween-label">Halloween</span><span class="cd-colon">::</span><span class="cd-days">--</span>
-    <div class="cd-editrow"><input type="date" class="cd-date" data-key="halloween-date"></div>
-    <div class="fontRow"><select class="font-select" data-id="halloween"></select><input type="range" class="font-scale" data-id="halloween" min="0.6" max="2" step="0.1"></div>
-  </div>
-
-  <div class="widget clockw" id="w-clock" data-id="clock">
-    <div class="dragHandle">⠿ move</div>
-    <div class="time"><span class="hm">--:--</span><span class="ampm">AM</span></div>
-    <div class="day">-</div>
-    <div class="date">-</div>
-    <div class="fontRow"><select class="font-select" data-id="clock"></select><input type="range" class="font-scale" data-id="clock" min="0.6" max="2" step="0.1"></div>
-  </div>
-
-  <div class="widget calw" id="w-calendar" data-id="calendar">
-    <div class="dragHandle">⠿ move</div>
-    <div class="calLinkRow">
-      <input type="text" id="calLinkInput" placeholder="Paste a Google Calendar link OR the full <iframe> embed code, or an Apple/iCloud public calendar link">
-      <button id="calLinkSave">Save</button>
-    </div>
-    <div class="calStatus" id="calStatus"></div>
-    <div class="calBody" id="calBody">
-      <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.</div>
-      <iframe id="calFrame" style="display:none;"></iframe>
-      <div class="calAgenda" id="calAgenda" style="display:none;">
-        <div class="calGrid" id="calGrid"></div>
-        <div class="calList" id="calList"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="tickerWrap">
-  <div id="tickerTrack">Welcome to the dashboard</div>
-</div>
-<div id="tickerEdit">
-  <input type="text" id="tickerTextInput" placeholder="Scrolling sign text...">
-  <label>Speed <input type="range" id="tickerSpeedInput" min="5" max="60" value="25"></label>
-  <select class="font-select" data-id="ticker"></select>
-  <label>Size <input type="range" class="font-scale" data-id="ticker" min="0.6" max="2" step="0.1"></label>
-</div>
-
-<div id="editControls">
-  <div class="iconBtn" id="editToggle" title="Edit layout">✎</div>
-  <div class="iconBtn disabled" id="undoBtn" title="Undo last change">↺</div>
-  <span id="editHint">Edit mode — drag by the handle, edit text &amp; dates, tweak fonts</span>
-</div>
-<div id="topControls">
-  <div class="iconBtn" id="fsToggle" title="Fullscreen">⛶</div>
-</div>
-
 <script>
 (function(){
   "use strict";
@@ -308,7 +19,7 @@
       "vacation-label": "Vacation",
       "christmas-label": "Christmas",
       "halloween-label": "Halloween",
-      "ticker-text": "Welcome to the dashboard  •  edit me in edit mode  •  add whatever you like here"
+      "ticker-text": "Welcome to the dashboard • edit me in edit mode • add whatever you like here"
     },
     dates: {
       "vacation-date": "",
@@ -357,7 +68,6 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return JSON.parse(JSON.stringify(defaults));
       var parsed = JSON.parse(raw);
-      // merge shallowly with defaults so new fields don't break old saves
       var merged = JSON.parse(JSON.stringify(defaults));
       merged.positions = Object.assign(merged.positions, parsed.positions || {});
       merged.text = Object.assign(merged.text, parsed.text || {});
@@ -490,7 +200,6 @@
     document.querySelector('#w-clock .day').textContent = dayNames[now.getDay()];
     document.querySelector('#w-clock .date').textContent = monNames[now.getMonth()] + ' ' + now.getDate();
 
-    // countdowns
     updateCountdown('vacation', state.dates['vacation-date']);
     updateCountdown('christmas', state.dates['christmas-date']);
     updateCountdown('halloween', state.dates['halloween-date']);
@@ -503,14 +212,13 @@
     var now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     var diffDays = Math.round((target - today) / 86400000);
-    if(diffDays < 0){ el.textContent = 'today!'; }
-    else if(diffDays === 0){ el.textContent = 'today!'; }
+    if(diffDays <= 0){ el.textContent = 'today!'; }
     else { el.textContent = diffDays; }
   }
   tickClock();
   setInterval(tickClock, 1000 * 15);
 
-  /* ---------------- countdown date inputs ---------------- */
+  /* ---------------- countdown date & text inputs ---------------- */
   document.querySelectorAll('.cd-date').forEach(function(inp){
     inp.addEventListener('focus', beginEdit);
     inp.addEventListener('change', function(){
@@ -522,8 +230,6 @@
       commitEdit();
     });
   });
-
-  /* ---------------- editable labels ---------------- */
   document.querySelectorAll('.cd-label').forEach(function(el){
     el.addEventListener('focus', beginEdit);
     el.addEventListener('blur', function(){
@@ -536,7 +242,7 @@
     });
   });
 
-  /* ---------------- calendar link (Google embed OR Apple/iCloud/Outlook ICS feed) ---------------- */
+  /* ---------------- calendar parsing & rendering engine ---------------- */
   var calFrame = document.getElementById('calFrame');
   var calEmpty = document.getElementById('calEmpty');
   var calAgenda = document.getElementById('calAgenda');
@@ -551,17 +257,13 @@
     calEmpty.style.display = which === 'empty' ? 'flex' : 'none';
   }
 
-  function detectCalMode(url){
-    return /calendar\.google\.com/i.test(url) ? 'google' : 'ics';
-  }
   function extractEmbedLink(raw){
     raw = (raw || '').trim();
     var match = raw.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
-    if(match){
-      return match[1].replace(/&amp;/g, '&');
-    }
+    if(match) return match[1].replace(/&amp;/g, '&');
     return raw;
   }
+
   function normalizeIcsUrl(url){
     if(url.indexOf('webcal://') === 0) return 'https://' + url.slice('webcal://'.length);
     return url;
@@ -579,7 +281,6 @@
   }
 
   function parseIcsDate(val, isDateOnly){
-    // val like 20260101 or 20260101T090000 or 20260101T090000Z
     var y = +val.slice(0,4), mo = +val.slice(4,6)-1, d = +val.slice(6,8);
     if(isDateOnly || val.length <= 8){ return {date:new Date(y,mo,d), allDay:true}; }
     var h = +val.slice(9,11), mi = +val.slice(11,13), s = +val.slice(13,15) || 0;
@@ -631,11 +332,9 @@
     return d;
   }
 
-  // expand an event into individual occurrence dates within [rangeStart, rangeEnd]
   function expandEvent(ev, rangeStart, rangeEnd){
     var out = [];
     if(!ev.dtstart) return out;
-    var duration = (ev.dtend ? ev.dtend.date - ev.dtstart.date : 0);
     if(!ev.rrule){
       if(ev.dtstart.date <= rangeEnd && (ev.dtend ? ev.dtend.date : ev.dtstart.date) >= rangeStart){
         out.push({start:ev.dtstart.date, allDay:ev.dtstart.allDay, summary:ev.summary||'(untitled)'});
@@ -689,7 +388,6 @@
     var attempts = [
       url,
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-      'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
       'https://corsproxy.io/?url=' + encodeURIComponent(url)
     ];
     var i = 0;
@@ -706,7 +404,7 @@
       return fetchWithTimeout(attemptUrl, 8000).then(function(res){
         if(!res.ok) return tryNext();
         return res.text().then(function(txt){
-          if(txt && txt.indexOf('BEGIN:VCALENDAR') !== -1) return txt;
+          if(txt && (txt.indexOf('BEGIN:VCALENDAR') !== -1 || txt.indexOf('BEGIN:VEVENT') !== -1)) return txt;
           return tryNext();
         });
       }).catch(function(){ return tryNext(); });
@@ -733,7 +431,6 @@
       occurrences = occurrences.concat(expandEvent(ev, gridStart, rangeEnd));
     });
 
-    // ---- month grid ----
     var dayHasEvent = {};
     occurrences.forEach(function(o){
       var k = o.start.getFullYear()+'-'+o.start.getMonth()+'-'+o.start.getDate();
@@ -752,10 +449,10 @@
     }
     calGrid.innerHTML = html;
 
-    // ---- upcoming list ----
     var upcoming = occurrences.filter(function(o){
       return o.allDay ? o.start >= todayStart : o.start >= now || (o.start >= todayStart && o.allDay);
     }).sort(function(a,b){ return a.start - b.start; }).slice(0, 10);
+
     var listHtml = '<div class="calListTitle">UPCOMING</div>';
     if(upcoming.length === 0){
       listHtml += '<div class="calEmptyList">Nothing on the calendar in the next 60 days.</div>';
@@ -787,83 +484,137 @@
     if(calRefreshTimer) clearTimeout(calRefreshTimer);
     if(!state.calLink){
       showCalPane('empty');
-      calEmpty.textContent = "No calendar linked yet. Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.";
+      calEmpty.innerHTML = "No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.";
       calStatus.textContent = '';
       return;
     }
-    var mode = detectCalMode(state.calLink);
-    if(mode === 'google'){
-      calFrame.src = state.calLink;
+
+    var raw = state.calLink.trim();
+    var embedUrl = extractEmbedLink(raw);
+
+    // If it's a Google Calendar HTML iframe embed link, use iframe mode directly
+    if(/calendar\.google\.com\/calendar\/embed/i.test(embedUrl)){
+      calStatus.textContent = '';
+      calFrame.src = embedUrl;
       showCalPane('frame');
-      calStatus.textContent = 'Google Calendar linked.';
       return;
     }
-    calStatus.textContent = 'Loading calendar…';
-    showCalPane('empty');
-    calEmpty.textContent = 'Loading your calendar…';
-    var url = normalizeIcsUrl(state.calLink);
-    fetchWithFallback(url).then(function(text){
+
+    // Otherwise treat it as an iCal / .ics / webcal link (Apple, iCloud, Outlook, or Google secret iCal address)
+    var icsUrl = normalizeIcsUrl(embedUrl);
+    calStatus.textContent = 'Loading calendar events...';
+
+    fetchWithFallback(icsUrl).then(function(text){
       if(!text){
-        calStatus.textContent = "Couldn't load that calendar link. Double-check it's a public share link and try again.";
         showCalPane('empty');
-        calEmpty.textContent = "Couldn't load that calendar. In the Calendar app: right-click the calendar → Share Calendar → turn on Public Calendar → Copy Link, then paste it above and hit Save again. If it still fails, the calendar server may be blocking outside access.";
+        calStatus.textContent = 'Error: Could not load calendar feed (CORS or invalid URL).';
+        calEmpty.innerHTML = "Failed to load feed.<br>Make sure your iCal URL is public/shared properly.";
         return;
       }
       var events = parseIcs(text);
+      calStatus.textContent = 'Synced ' + events.length + ' base events';
       renderAgenda(events);
-      calStatus.textContent = 'Calendar linked · ' + events.length + ' event(s) found.';
-      calRefreshTimer = setTimeout(loadCalendar, 15 * 60 * 1000);
+      // Auto refresh every 30 mins
+      calRefreshTimer = setTimeout(loadCalendar, 30 * 60 * 1000);
+    }).catch(function(err){
+      showCalPane('empty');
+      calStatus.textContent = 'Failed to parse calendar.';
     });
   }
-
   loadCalendar();
-  document.getElementById('calLinkInput').addEventListener('focus', beginEdit);
+
   document.getElementById('calLinkSave').addEventListener('click', function(){
     beginEdit();
-    var v = extractEmbedLink(document.getElementById('calLinkInput').value);
-    state.calLink = v;
-    document.getElementById('calLinkInput').value = v;
+    state.calLink = document.getElementById('calLinkInput').value.trim();
     saveState();
     loadCalendar();
     commitEdit();
+    calStatus.textContent = 'Saved!';
+    setTimeout(function(){ if(calStatus.textContent === 'Saved!') calStatus.textContent = ''; }, 2000);
   });
 
-  /* ---------------- ticker ---------------- */
-  var track = document.getElementById('tickerTrack');
-  function renderTicker(){
-    track.textContent = state.text['ticker-text'];
-    // restart animation with duration based on text length + speed
-    var speed = Number(state.tickerSpeed) || 25; // px-ish scale, higher = faster
-    var distance = track.scrollWidth + window.innerWidth;
-    var duration = distance / (speed * 4);
-    track.style.animation = 'none';
-    void track.offsetWidth;
-    track.style.animation = 'tickerScroll ' + duration + 's linear infinite';
+  /* ---------------- ticker updates ---------------- */
+  var tickerTrack = document.getElementById('tickerTrack');
+  var tickerWrap = document.getElementById('tickerWrap');
+  var tickerAnim = null;
+
+  function updateTickerText(txt){
+    tickerTrack.textContent = txt;
+    startTickerAnimation(state.tickerSpeed);
   }
-  var styleTag = document.createElement('style');
-  styleTag.textContent = '@keyframes tickerScroll{ from{ transform:translateX(0);} to{ transform:translateX(-100%);} }';
-  document.head.appendChild(styleTag);
-  renderTicker();
+  function startTickerAnimation(speedSec){
+    if(tickerAnim) tickerAnim.cancel();
+    var trackW = tickerTrack.offsetWidth;
+    var wrapW = tickerWrap.offsetWidth;
+    tickerAnim = tickerTrack.animate([
+      { transform: 'translateX(0)' },
+      { transform: 'translateX(-' + (trackW + wrapW) + 'px)' }
+    ], {
+      duration: (trackW + wrapW) / (speedSec * 2.5) * 1000,
+      iterations: Infinity
+    });
+  }
+  updateTickerText(state.text['ticker-text']);
 
-  var tickerTextInput = document.getElementById('tickerTextInput');
-  tickerTextInput.addEventListener('focus', beginEdit);
-  tickerTextInput.addEventListener('input', function(e){
-    state.text['ticker-text'] = e.target.value || ' ';
+  document.getElementById('tickerTextInput').addEventListener('input', function(e){
+    state.text['ticker-text'] = e.target.value;
+    updateTickerText(e.target.value);
     saveState();
-    renderTicker();
   });
-  tickerTextInput.addEventListener('blur', commitEdit);
-
-  var tickerSpeedInput = document.getElementById('tickerSpeedInput');
-  tickerSpeedInput.addEventListener('pointerdown', beginEdit);
-  tickerSpeedInput.addEventListener('input', function(e){
+  document.getElementById('tickerSpeedInput').addEventListener('input', function(e){
     state.tickerSpeed = Number(e.target.value);
+    startTickerAnimation(state.tickerSpeed);
     saveState();
-    renderTicker();
   });
-  tickerSpeedInput.addEventListener('change', commitEdit);
 
-  /* ---------------- edit mode toggle ---------------- */
+  /* ---------------- drag & drop widgets ---------------- */
+  var activeWidget = null;
+  var dragOffsetX = 0, dragOffsetY = 0;
+
+  document.querySelectorAll('.widget').forEach(function(widget){
+    var handle = widget.querySelector('.dragHandle');
+    handle.addEventListener('pointerdown', function(e){
+      if(!body.classList.contains('edit-mode')) return;
+      beginEdit();
+      activeWidget = widget;
+      widget.classList.add('dragging');
+      var rect = widget.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    handle.addEventListener('pointermove', function(e){
+      if(activeWidget !== widget) return;
+      var stageRect = stage.getBoundingClientRect();
+      var x = e.clientX - stageRect.left - dragOffsetX;
+      var y = e.clientY - stageRect.top - dragOffsetY;
+      var leftPct = (x / stageRect.width) * 100;
+      var topPct = (y / stageRect.height) * 100;
+
+      leftPct = Math.max(0, Math.min(95, leftPct));
+      topPct = Math.max(0, Math.min(95, topPct));
+
+      widget.style.left = leftPct + '%';
+      widget.style.top = topPct + '%';
+
+      var id = widget.getAttribute('data-id');
+      state.positions[id].left = Math.round(leftPct * 10) / 10;
+      state.positions[id].top = Math.round(topPct * 10) / 10;
+    });
+
+    handle.addEventListener('pointerup', function(e){
+      if(activeWidget === widget){
+        widget.classList.remove('dragging');
+        activeWidget = null;
+        saveState();
+        commitEdit();
+      }
+    });
+  });
+
+  /* ---------------- top bar controls ---------------- */
   var editToggle = document.getElementById('editToggle');
   editToggle.addEventListener('click', function(){
     body.classList.toggle('edit-mode');
@@ -873,140 +624,62 @@
     });
   });
 
-  /* ---------------- fullscreen ---------------- */
-  var fsToggle = document.getElementById('fsToggle');
-  fsToggle.addEventListener('click', function(){
-    if(!document.fullscreenElement){
-      document.documentElement.requestFullscreen().catch(function(){});
-    } else {
-      document.exitFullscreen();
-    }
-  });
-  document.addEventListener('fullscreenchange', function(){
-    fsToggle.textContent = document.fullscreenElement ? '⤫' : '⛶';
-  });
-
-  /* ---------------- drag to reposition ---------------- */
-  var dragging = null;
-  var startX, startY, startLeft, startTop, stageRect;
-
-  document.querySelectorAll('.dragHandle').forEach(function(handle){
-    handle.addEventListener('pointerdown', function(e){
-      if(!body.classList.contains('edit-mode')) return;
-      var widget = handle.closest('.widget');
-      dragging = widget;
-      widget.classList.add('dragging');
-      stageRect = stage.getBoundingClientRect();
-      startX = e.clientX; startY = e.clientY;
-      var rect = widget.getBoundingClientRect();
-      startLeft = ((rect.left - stageRect.left) / stageRect.width) * 100;
-      startTop = ((rect.top - stageRect.top) / stageRect.height) * 100;
-      handle.setPointerCapture(e.pointerId);
-      beginEdit();
-      e.preventDefault();
-    });
-    handle.addEventListener('pointermove', function(e){
-      if(!dragging) return;
-      var dxPct = ((e.clientX - startX) / stageRect.width) * 100;
-      var dyPct = ((e.clientY - startY) / stageRect.height) * 100;
-      var newLeft = Math.max(0, Math.min(96, startLeft + dxPct));
-      var newTop = Math.max(0, Math.min(94, startTop + dyPct));
-      dragging.style.left = newLeft + '%';
-      dragging.style.top = newTop + '%';
-    });
-    handle.addEventListener('pointerup', function(e){
-      if(!dragging) return;
-      var id = dragging.getAttribute('data-id');
-      var left = parseFloat(dragging.style.left);
-      var top = parseFloat(dragging.style.top);
-      state.positions[id].left = left;
-      state.positions[id].top = top;
-      saveState();
-      dragging.classList.remove('dragging');
-      dragging = null;
-      commitEdit();
-    });
-  });
-
-  /* ---------------- undo button ---------------- */
-  function refreshAll(){
-    applyPositions();
-    document.querySelectorAll('[data-key]').forEach(function(el){
-      var key = el.getAttribute('data-key');
-      if(el.tagName === 'INPUT'){
-        if(state.dates.hasOwnProperty(key)) el.value = state.dates[key] || '';
-      } else {
-        if(state.text.hasOwnProperty(key)) el.textContent = state.text[key];
-      }
-    });
-    document.getElementById('tickerTextInput').value = state.text['ticker-text'];
-    document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
-    document.getElementById('calLinkInput').value = state.calLink;
-    syncFontControls();
-    applyFonts();
-    loadCalendar();
-    renderTicker();
-    tickClock();
-  }
   undoBtn.addEventListener('click', function(){
     if(history.length === 0) return;
-    var snap = history.pop();
-    state = JSON.parse(snap);
+    var prev = history.pop();
+    state = JSON.parse(prev);
     saveState();
-    refreshAll();
+    applyPositions();
+    applyFonts();
+    document.getElementById('tickerTextInput').value = state.text['ticker-text'] || '';
+    document.getElementById('tickerSpeedInput').value = state.tickerSpeed || 25;
+    document.getElementById('calLinkInput').value = state.calLink || '';
+    updateTickerText(state.text['ticker-text'] || '');
+    syncFontControls();
+    loadCalendar();
+    tickClock();
     updateUndoBtn();
   });
 
-  /* ---------------- falling stars background ---------------- */
+  document.getElementById('fsToggle').addEventListener('click', function(){
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      if(document.exitFullscreen) document.exitFullscreen();
+    }
+  });
+
+  /* ---------------- background starfield animation ---------------- */
   var canvas = document.getElementById('stars');
   var ctx = canvas.getContext('2d');
-  var particles = [];
-  var PARTICLE_COUNT = 140;
-
+  var stars = [];
   function resizeCanvas(){
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   }
-  function makeParticle(randomY){
-    return {
-      x: Math.random() * window.innerWidth,
-      y: randomY ? Math.random() * window.innerHeight : -10,
-      r: Math.random() * 1.6 + 0.4,
-      speed: Math.random() * 0.35 + 0.08,
-      drift: (Math.random() - 0.5) * 0.15,
-      opacity: Math.random() * 0.6 + 0.25
-    };
-  }
-  function initParticles(){
-    particles = [];
-    for(var i=0;i<PARTICLE_COUNT;i++){ particles.push(makeParticle(true)); }
-  }
-  function animateStars(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    for(var i=0;i<particles.length;i++){
-      var p = particles[i];
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,255,255,' + p.opacity + ')';
-      ctx.fill();
-      p.y += p.speed;
-      p.x += p.drift;
-      if(p.y > window.innerHeight + 10){
-        particles[i] = makeParticle(false);
-      }
-    }
-    requestAnimationFrame(animateStars);
-  }
+  window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
-  initParticles();
-  animateStars();
-  window.addEventListener('resize', function(){
-    resizeCanvas();
-  });
+
+  for(var i=0; i<120; i++){
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: Math.random() * 1.5 + 0.5,
+      alpha: Math.random(),
+      speed: Math.random() * 0.008 + 0.002
+    });
+  }
+  function drawStars(){
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    stars.forEach(function(s){
+      s.alpha += s.speed;
+      if(s.alpha > 1 || s.alpha < 0) s.speed = -s.speed;
+      ctx.fillStyle = 'rgba(255,255,255,' + Math.abs(s.alpha) + ')';
+      ctx.fillRect(s.x, s.y, s.size, s.size);
+    });
+    requestAnimationFrame(drawStars);
+  }
+  drawStars();
 
 })();
 </script>
-</body>
-</html>
