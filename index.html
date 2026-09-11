@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard</title>
+<style>
+  :root{
+    --white: #ffffff;
+    --dim: rgba(255,255,255,0.55);
+    --faint: rgba(255,255,255,0.18);
+    --font: 'Helvetica Neue', Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:#000; color:var(--white); font-family:var(--font);
+    overflow:hidden;
+  }
+  #stars{position:fixed; inset:0; z-index:0; display:block;}
+
+  #stage{
+    position:fixed; inset:0; z-index:1;
+  }
+
+  .widget{
+    position:absolute;
+    color:var(--white);
+    user-select:none;
+    font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
+  }
+
+  /* ---------- top bar controls ---------- */
+  #topControls{
+    position:fixed; top:14px; right:16px; z-index:50;
+    display:flex; gap:10px;
+  }
+  #editControls{
+    position:fixed; top:14px; left:16px; z-index:50;
+    display:flex; gap:10px; align-items:center;
+  }
+  .iconBtn{
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.25);
+    color:var(--white);
+    border-radius:8px;
+    width:38px; height:38px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    font-size:16px;
+    backdrop-filter:blur(4px);
+    transition:background 0.15s ease;
+  }
+  .iconBtn:hover{background:rgba(255,255,255,0.18);}
+  .iconBtn.active{background:rgba(255,255,255,0.35); border-color:#fff;}
+  .iconBtn.disabled{opacity:0.3; cursor:default; pointer-events:none;}
+  #editHint{
+    font-size:12px; color:var(--dim); letter-spacing:0.02em;
+    display:none;
+  }
+  body.edit-mode #editHint{display:inline;}
+
+  /* ---------- drag handle, shown only in edit mode ---------- */
+  .dragHandle{
+    display:none;
+    position:absolute; top:-22px; left:0;
+    font-size:11px; color:#000; background:var(--white);
+    padding:3px 8px; border-radius:6px 6px 0 0;
+    cursor:grab; letter-spacing:0.03em;
+  }
+  body.edit-mode .widget{outline:1px dashed rgba(255,255,255,0.35); border-radius:10px;}
+  body.edit-mode .dragHandle{display:block;}
+  body.edit-mode .widget.dragging{outline:1px solid #fff;}
+
+  /* ---------- countdown widgets ---------- */
+  .countdown{
+    text-align:center;
+    padding:6px 10px;
+  }
+  .countdown .cd-label{
+    font-size:calc(15px * var(--wscale, 1));
+    letter-spacing:0.08em;
+    outline:none;
+    display:inline-block;
+    min-width:20px;
+  }
+  .countdown .cd-colon{ margin:0 4px; opacity:0.6; }
+  .countdown .cd-days{
+    font-size:calc(15px * var(--wscale, 1));
+    font-weight:600;
+  }
+  .countdown .cd-sub{
+    font-size:10px; color:var(--dim); margin-top:2px; letter-spacing:0.05em;
+  }
+  .countdown .cd-editrow{
+    display:none; margin-top:8px;
+  }
+  body.edit-mode .countdown .cd-editrow{ display:flex; justify-content:center; gap:6px; }
+  .countdown input[type="date"]{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:11px; border-radius:5px; padding:3px 5px; font-family:var(--font);
+  }
+  body.edit-mode .cd-label{ background:rgba(255,255,255,0.08); border-radius:4px; padding:0 4px; cursor:text; }
+
+  /* ---------- per-widget font controls ---------- */
+  .fontRow{ display:none; margin-top:8px; gap:6px; justify-content:center; align-items:center; }
+  body.edit-mode .fontRow{ display:flex; }
+  .fontRow select, .fontRow input[type="range"]{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:10px; border-radius:5px; padding:3px 4px; font-family:var(--font);
+  }
+  .fontRow select{ max-width:96px; }
+  .fontRow input[type="range"]{ width:70px; }
+
+  /* ---------- clock widget ---------- */
+  .clockw{ padding:10px; }
+  .clockw .time{
+    font-size:calc(64px * var(--wscale, 1)); font-weight:200; line-height:1; letter-spacing:-0.01em;
+  }
+  .clockw .time .ampm{ font-size:calc(22px * var(--wscale, 1)); font-weight:300; margin-left:6px; color:var(--dim);}
+  .clockw .day{ font-size:calc(24px * var(--wscale, 1)); font-weight:500; margin-top:10px; letter-spacing:0.04em; }
+  .clockw .date{ font-size:calc(16px * var(--wscale, 1)); color:var(--dim); margin-top:2px; letter-spacing:0.03em; }
+  .clockw .fontRow{ justify-content:flex-start; }
+
+  /* ---------- calendar widget ---------- */
+  .calw{ display:flex; flex-direction:column; }
+  .calw .calLinkRow{
+    display:none; gap:6px; margin-bottom:6px; align-items:center;
+  }
+  body.edit-mode .calw .calLinkRow{ display:flex; }
+  .calw .calLinkRow input{
+    flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+  }
+  .calw .calLinkRow button{
+    background:var(--white); color:#000; border:none; border-radius:6px;
+    padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
+  }
+  .calw iframe{
+    width:100%; flex:1; border:1px solid rgba(255,255,255,0.15); border-radius:10px;
+    background:rgba(255,255,255,0.03); filter: invert(0);
+  }
+  .calw .calEmpty{
+    flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
+    color:var(--dim); font-size:14px; border:1px dashed rgba(255,255,255,0.25); border-radius:10px; padding:20px;
+  }
+
+  /* ---------- ticker ---------- */
+  #tickerWrap{
+    position:fixed; left:0; right:0; bottom:0; height:56px; z-index:20;
+    background:rgba(0,0,0,0.55); border-top:1px solid rgba(255,255,255,0.15);
+    overflow:hidden; display:flex; align-items:center;
+    backdrop-filter:blur(3px);
+    font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
+  }
+  #tickerTrack{
+    white-space:nowrap; position:absolute; will-change:transform;
+    font-size:calc(20px * var(--wscale, 1)); letter-spacing:0.02em; padding-left:100%;
+  }
+  #tickerEdit{
+    display:none; position:fixed; left:16px; right:16px; bottom:64px; z-index:50;
+    background:rgba(20,20,20,0.9); border:1px solid rgba(255,255,255,0.25);
+    border-radius:10px; padding:10px 14px; gap:10px 14px; align-items:center; flex-wrap:wrap;
+  }
+  body.edit-mode #tickerEdit{ display:flex; }
+  #tickerEdit input[type="text"]{
+    flex:1; min-width:160px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:13px; border-radius:6px; padding:7px 10px; font-family:var(--font);
+  }
+  #tickerEdit label{ font-size:11px; color:var(--dim); display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  #tickerEdit input[type="range"]{ width:110px; }
+  #tickerEdit select{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+
+<div id="stage">
+  <div class="widget countdown" id="w-vacation" data-id="vacation">
+    <div class="dragHandle">⠿ move</div>
+    <span class="cd-label" contenteditable="false" data-key="vacation-label">Vacation</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+    <div class="cd-editrow"><input type="date" class="cd-date" data-key="vacation-date"></div>
+    <div class="fontRow"><select class="font-select" data-id="vacation"></select><input type="range" class="font-scale" data-id="vacation" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget countdown" id="w-christmas" data-id="christmas">
+    <div class="dragHandle">⠿ move</div>
+    <span class="cd-label" contenteditable="false" data-key="christmas-label">Christmas</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+    <div class="cd-editrow"><input type="date" class="cd-date" data-key="christmas-date"></div>
+    <div class="fontRow"><select class="font-select" data-id="christmas"></select><input type="range" class="font-scale" data-id="christmas" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget countdown" id="w-halloween" data-id="halloween">
+    <div class="dragHandle">⠿ move</div>
+    <span class="cd-label" contenteditable="false" data-key="halloween-label">Halloween</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+    <div class="cd-editrow"><input type="date" class="cd-date" data-key="halloween-date"></div>
+    <div class="fontRow"><select class="font-select" data-id="halloween"></select><input type="range" class="font-scale" data-id="halloween" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget clockw" id="w-clock" data-id="clock">
+    <div class="dragHandle">⠿ move</div>
+    <div class="time"><span class="hm">--:--</span><span class="ampm">AM</span></div>
+    <div class="day">-</div>
+    <div class="date">-</div>
+    <div class="fontRow"><select class="font-select" data-id="clock"></select><input type="range" class="font-scale" data-id="clock" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget calw" id="w-calendar" data-id="calendar">
+    <div class="dragHandle">⠿ move</div>
+    <div class="calLinkRow">
+      <input type="text" id="calLinkInput" placeholder="Paste your calendar's embed link here (Google Calendar → Settings → Integrate calendar → Embed code URL)">
+      <button id="calLinkSave">Save</button>
+    </div>
+    <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar's embed link above.</div>
+    <iframe id="calFrame" style="display:none;"></iframe>
+  </div>
+</div>
+
+<div id="tickerWrap">
+  <div id="tickerTrack">Welcome to the dashboard</div>
+</div>
+<div id="tickerEdit">
+  <input type="text" id="tickerTextInput" placeholder="Scrolling sign text...">
+  <label>Speed <input type="range" id="tickerSpeedInput" min="5" max="60" value="25"></label>
+  <select class="font-select" data-id="ticker"></select>
+  <label>Size <input type="range" class="font-scale" data-id="ticker" min="0.6" max="2" step="0.1"></label>
+</div>
+
+<div id="editControls">
+  <div class="iconBtn" id="editToggle" title="Edit layout">✎</div>
+  <div class="iconBtn disabled" id="undoBtn" title="Undo last change">↺</div>
+  <span id="editHint">Edit mode — drag by the handle, edit text &amp; dates, tweak fonts</span>
+</div>
+<div id="topControls">
+  <div class="iconBtn" id="fsToggle" title="Fullscreen">⛶</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORAGE_KEY = "dakboard_layout_v1";
+  var stage = document.getElementById('stage');
+  var body = document.body;
+
+  /* ---------------- defaults ---------------- */
+  var defaults = {
+    positions: {
+      vacation:  {left:2,  top:2,  width:28, height:null},
+      christmas: {left:36, top:2,  width:28, height:null},
+      halloween: {left:70, top:2,  width:28, height:null},
+      clock:     {left:2,  top:34, width:28, height:null},
+      calendar:  {left:34, top:14, width:64, height:70}
+    },
+    text: {
+      "vacation-label": "Vacation",
+      "christmas-label": "Christmas",
+      "halloween-label": "Halloween",
+      "ticker-text": "Welcome to the dashboard  •  edit me in edit mode  •  add whatever you like here"
+    },
+    dates: {
+      "vacation-date": "",
+      "christmas-date": nextDec25(),
+      "halloween-date": nextDateThisYearOrNext(9,31)
+    },
+    calLink: "",
+    tickerSpeed: 25,
+    fonts: {
+      vacation:  {family:"", scale:1},
+      christmas: {family:"", scale:1},
+      halloween: {family:"", scale:1},
+      clock:     {family:"", scale:1},
+      ticker:    {family:"", scale:1}
+    }
+  };
+
+  var FONT_OPTIONS = [
+    {label:"Default",  value:"'Helvetica Neue', Arial, sans-serif"},
+    {label:"Serif",    value:"Georgia, 'Times New Roman', serif"},
+    {label:"Mono",     value:"'Courier New', monospace"},
+    {label:"Rounded",  value:"'Trebuchet MS', sans-serif"},
+    {label:"Elegant",  value:"'Palatino Linotype', Palatino, serif"},
+    {label:"Playful",  value:"'Comic Sans MS', cursive"},
+    {label:"Bold",     value:"Impact, Haettenschweiler, sans-serif"},
+    {label:"Verdana",  value:"Verdana, Geneva, sans-serif"}
+  ];
+
+  function nextDec25(){
+    var now = new Date();
+    var y = now.getMonth() === 11 && now.getDate() > 25 ? now.getFullYear()+1 : now.getFullYear();
+    return y + "-12-25";
+  }
+  function nextDateThisYearOrNext(monthIndex, day){
+    var now = new Date();
+    var y = now.getFullYear();
+    var d = new Date(y, monthIndex, day);
+    if (d < new Date(now.getFullYear(), now.getMonth(), now.getDate())) y += 1;
+    var mm = String(monthIndex+1).padStart(2,'0');
+    var dd = String(day).padStart(2,'0');
+    return y + "-" + mm + "-" + dd;
+  }
+
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return JSON.parse(JSON.stringify(defaults));
+      var parsed = JSON.parse(raw);
+      // merge shallowly with defaults so new fields don't break old saves
+      var merged = JSON.parse(JSON.stringify(defaults));
+      merged.positions = Object.assign(merged.positions, parsed.positions || {});
+      merged.text = Object.assign(merged.text, parsed.text || {});
+      merged.dates = Object.assign(merged.dates, parsed.dates || {});
+      merged.calLink = parsed.calLink || "";
+      merged.tickerSpeed = parsed.tickerSpeed || 25;
+      merged.fonts = Object.assign(merged.fonts, parsed.fonts || {});
+      return merged;
+    }catch(e){
+      return JSON.parse(JSON.stringify(defaults));
+    }
+  }
+  function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+  var state = loadState();
+
+  /* ---------------- apply positions ---------------- */
+  function applyPositions(){
+    Object.keys(state.positions).forEach(function(id){
+      var el = document.getElementById('w-'+id);
+      if(!el) return;
+      var p = state.positions[id];
+      el.style.left = p.left + '%';
+      el.style.top = p.top + '%';
+      if(p.width != null) el.style.width = p.width + '%';
+      if(p.height != null) el.style.height = p.height + '%';
+    });
+  }
+  applyPositions();
+
+  /* ---------------- undo history ---------------- */
+  var history = [];
+  var pendingSnapshot = null;
+  var undoBtn = document.getElementById('undoBtn');
+  function beginEdit(){
+    if(pendingSnapshot === null) pendingSnapshot = JSON.stringify(state);
+  }
+  function commitEdit(){
+    if(pendingSnapshot !== null){
+      history.push(pendingSnapshot);
+      if(history.length > 50) history.shift();
+      pendingSnapshot = null;
+      updateUndoBtn();
+    }
+  }
+  function updateUndoBtn(){
+    if(history.length === 0){ undoBtn.classList.add('disabled'); }
+    else { undoBtn.classList.remove('disabled'); }
+  }
+  updateUndoBtn();
+
+  /* ---------------- fonts ---------------- */
+  function applyFonts(){
+    Object.keys(state.fonts).forEach(function(id){
+      var el = id === 'ticker' ? document.getElementById('tickerWrap') : document.getElementById('w-'+id);
+      if(!el) return;
+      var f = state.fonts[id] || {family:"", scale:1};
+      if(f.family){ el.style.setProperty('--wfont', f.family); }
+      else { el.style.removeProperty('--wfont'); }
+      el.style.setProperty('--wscale', f.scale || 1);
+    });
+  }
+  document.querySelectorAll('.font-select').forEach(function(sel){
+    FONT_OPTIONS.forEach(function(opt){
+      var o = document.createElement('option');
+      o.value = opt.value; o.textContent = opt.label;
+      sel.appendChild(o);
+    });
+  });
+  function syncFontControls(){
+    document.querySelectorAll('.font-select').forEach(function(sel){
+      var id = sel.getAttribute('data-id');
+      sel.value = (state.fonts[id] && state.fonts[id].family) || FONT_OPTIONS[0].value;
+    });
+    document.querySelectorAll('.font-scale').forEach(function(rng){
+      var id = rng.getAttribute('data-id');
+      rng.value = (state.fonts[id] && state.fonts[id].scale) || 1;
+    });
+  }
+  syncFontControls();
+  applyFonts();
+
+  document.querySelectorAll('.font-select').forEach(function(sel){
+    var id = sel.getAttribute('data-id');
+    sel.addEventListener('mousedown', beginEdit);
+    sel.addEventListener('focus', beginEdit);
+    sel.addEventListener('change', function(){
+      beginEdit();
+      state.fonts[id].family = sel.value;
+      saveState();
+      applyFonts();
+      commitEdit();
+    });
+  });
+  document.querySelectorAll('.font-scale').forEach(function(rng){
+    var id = rng.getAttribute('data-id');
+    rng.addEventListener('pointerdown', beginEdit);
+    rng.addEventListener('input', function(){
+      state.fonts[id].scale = Number(rng.value);
+      saveState();
+      applyFonts();
+    });
+    rng.addEventListener('change', commitEdit);
+  });
+
+  /* ---------------- apply text/dates ---------------- */
+  document.querySelectorAll('[data-key]').forEach(function(el){
+    var key = el.getAttribute('data-key');
+    if(el.tagName === 'INPUT'){
+      if(state.dates.hasOwnProperty(key)) el.value = state.dates[key] || '';
+    } else {
+      if(state.text.hasOwnProperty(key)) el.textContent = state.text[key];
+    }
+  });
+  document.getElementById('tickerTextInput').value = state.text['ticker-text'];
+  document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
+  document.getElementById('calLinkInput').value = state.calLink;
+
+  /* ---------------- clock ---------------- */
+  var dayNames = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  var monNames = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  function tickClock(){
+    var now = new Date();
+    var h = now.getHours();
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12; if(h12 === 0) h12 = 12;
+    var m = String(now.getMinutes()).padStart(2,'0');
+    document.querySelector('#w-clock .hm').textContent = h12 + ':' + m;
+    document.querySelector('#w-clock .ampm').textContent = ampm;
+    document.querySelector('#w-clock .day').textContent = dayNames[now.getDay()];
+    document.querySelector('#w-clock .date').textContent = monNames[now.getMonth()] + ' ' + now.getDate();
+
+    // countdowns
+    updateCountdown('vacation', state.dates['vacation-date']);
+    updateCountdown('christmas', state.dates['christmas-date']);
+    updateCountdown('halloween', state.dates['halloween-date']);
+  }
+  function updateCountdown(id, dateStr){
+    var el = document.querySelector('#w-'+id+' .cd-days');
+    if(!el) return;
+    if(!dateStr){ el.textContent = '--'; return; }
+    var target = new Date(dateStr + 'T00:00:00');
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var diffDays = Math.round((target - today) / 86400000);
+    if(diffDays < 0){ el.textContent = 'today!'; }
+    else if(diffDays === 0){ el.textContent = 'today!'; }
+    else { el.textContent = diffDays; }
+  }
+  tickClock();
+  setInterval(tickClock, 1000 * 15);
+
+  /* ---------------- countdown date inputs ---------------- */
+  document.querySelectorAll('.cd-date').forEach(function(inp){
+    inp.addEventListener('focus', beginEdit);
+    inp.addEventListener('change', function(){
+      beginEdit();
+      var key = inp.getAttribute('data-key');
+      state.dates[key] = inp.value;
+      saveState();
+      tickClock();
+      commitEdit();
+    });
+  });
+
+  /* ---------------- editable labels ---------------- */
+  document.querySelectorAll('.cd-label').forEach(function(el){
+    el.addEventListener('focus', beginEdit);
+    el.addEventListener('blur', function(){
+      beginEdit();
+      var key = el.getAttribute('data-key');
+      state.text[key] = el.textContent.trim() || state.text[key];
+      el.textContent = state.text[key];
+      saveState();
+      commitEdit();
+    });
+  });
+
+  /* ---------------- calendar link ---------------- */
+  function applyCalLink(){
+    var frame = document.getElementById('calFrame');
+    var empty = document.getElementById('calEmpty');
+    if(state.calLink){
+      frame.src = state.calLink;
+      frame.style.display = 'block';
+      empty.style.display = 'none';
+    } else {
+      frame.style.display = 'none';
+      empty.style.display = 'flex';
+    }
+  }
+  applyCalLink();
+  document.getElementById('calLinkInput').addEventListener('focus', beginEdit);
+  document.getElementById('calLinkSave').addEventListener('click', function(){
+    beginEdit();
+    var v = document.getElementById('calLinkInput').value.trim();
+    state.calLink = v;
+    saveState();
+    applyCalLink();
+    commitEdit();
+  });
+
+  /* ---------------- ticker ---------------- */
+  var track = document.getElementById('tickerTrack');
+  function renderTicker(){
+    track.textContent = state.text['ticker-text'];
+    // restart animation with duration based on text length + speed
+    var speed = Number(state.tickerSpeed) || 25; // px-ish scale, higher = faster
+    var distance = track.scrollWidth + window.innerWidth;
+    var duration = distance / (speed * 4);
+    track.style.animation = 'none';
+    void track.offsetWidth;
+    track.style.animation = 'tickerScroll ' + duration + 's linear infinite';
+  }
+  var styleTag = document.createElement('style');
+  styleTag.textContent = '@keyframes tickerScroll{ from{ transform:translateX(0);} to{ transform:translateX(-100%);} }';
+  document.head.appendChild(styleTag);
+  renderTicker();
+
+  var tickerTextInput = document.getElementById('tickerTextInput');
+  tickerTextInput.addEventListener('focus', beginEdit);
+  tickerTextInput.addEventListener('input', function(e){
+    state.text['ticker-text'] = e.target.value || ' ';
+    saveState();
+    renderTicker();
+  });
+  tickerTextInput.addEventListener('blur', commitEdit);
+
+  var tickerSpeedInput = document.getElementById('tickerSpeedInput');
+  tickerSpeedInput.addEventListener('pointerdown', beginEdit);
+  tickerSpeedInput.addEventListener('input', function(e){
+    state.tickerSpeed = Number(e.target.value);
+    saveState();
+    renderTicker();
+  });
+  tickerSpeedInput.addEventListener('change', commitEdit);
+
+  /* ---------------- edit mode toggle ---------------- */
+  var editToggle = document.getElementById('editToggle');
+  editToggle.addEventListener('click', function(){
+    body.classList.toggle('edit-mode');
+    editToggle.classList.toggle('active');
+    document.querySelectorAll('.cd-label').forEach(function(el){
+      el.setAttribute('contenteditable', body.classList.contains('edit-mode') ? 'true' : 'false');
+    });
+  });
+
+  /* ---------------- fullscreen ---------------- */
+  var fsToggle = document.getElementById('fsToggle');
+  fsToggle.addEventListener('click', function(){
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      document.exitFullscreen();
+    }
+  });
+  document.addEventListener('fullscreenchange', function(){
+    fsToggle.textContent = document.fullscreenElement ? '⤫' : '⛶';
+  });
+
+  /* ---------------- drag to reposition ---------------- */
+  var dragging = null;
+  var startX, startY, startLeft, startTop, stageRect;
+
+  document.querySelectorAll('.dragHandle').forEach(function(handle){
+    handle.addEventListener('pointerdown', function(e){
+      if(!body.classList.contains('edit-mode')) return;
+      var widget = handle.closest('.widget');
+      dragging = widget;
+      widget.classList.add('dragging');
+      stageRect = stage.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY;
+      var rect = widget.getBoundingClientRect();
+      startLeft = ((rect.left - stageRect.left) / stageRect.width) * 100;
+      startTop = ((rect.top - stageRect.top) / stageRect.height) * 100;
+      handle.setPointerCapture(e.pointerId);
+      beginEdit();
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', function(e){
+      if(!dragging) return;
+      var dxPct = ((e.clientX - startX) / stageRect.width) * 100;
+      var dyPct = ((e.clientY - startY) / stageRect.height) * 100;
+      var newLeft = Math.max(0, Math.min(96, startLeft + dxPct));
+      var newTop = Math.max(0, Math.min(94, startTop + dyPct));
+      dragging.style.left = newLeft + '%';
+      dragging.style.top = newTop + '%';
+    });
+    handle.addEventListener('pointerup', function(e){
+      if(!dragging) return;
+      var id = dragging.getAttribute('data-id');
+      var left = parseFloat(dragging.style.left);
+      var top = parseFloat(dragging.style.top);
+      state.positions[id].left = left;
+      state.positions[id].top = top;
+      saveState();
+      dragging.classList.remove('dragging');
+      dragging = null;
+      commitEdit();
+    });
+  });
+
+  /* ---------------- undo button ---------------- */
+  function refreshAll(){
+    applyPositions();
+    document.querySelectorAll('[data-key]').forEach(function(el){
+      var key = el.getAttribute('data-key');
+      if(el.tagName === 'INPUT'){
+        if(state.dates.hasOwnProperty(key)) el.value = state.dates[key] || '';
+      } else {
+        if(state.text.hasOwnProperty(key)) el.textContent = state.text[key];
+      }
+    });
+    document.getElementById('tickerTextInput').value = state.text['ticker-text'];
+    document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
+    document.getElementById('calLinkInput').value = state.calLink;
+    syncFontControls();
+    applyFonts();
+    applyCalLink();
+    renderTicker();
+    tickClock();
+  }
+  undoBtn.addEventListener('click', function(){
+    if(history.length === 0) return;
+    var snap = history.pop();
+    state = JSON.parse(snap);
+    saveState();
+    refreshAll();
+    updateUndoBtn();
+  });
+
+  /* ---------------- falling stars background ---------------- */
+  var canvas = document.getElementById('stars');
+  var ctx = canvas.getContext('2d');
+  var particles = [];
+  var PARTICLE_COUNT = 140;
+
+  function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  function makeParticle(randomY){
+    return {
+      x: Math.random() * window.innerWidth,
+      y: randomY ? Math.random() * window.innerHeight : -10,
+      r: Math.random() * 1.6 + 0.4,
+      speed: Math.random() * 0.35 + 0.08,
+      drift: (Math.random() - 0.5) * 0.15,
+      opacity: Math.random() * 0.6 + 0.25
+    };
+  }
+  function initParticles(){
+    particles = [];
+    for(var i=0;i<PARTICLE_COUNT;i++){ particles.push(makeParticle(true)); }
+  }
+  function animateStars(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    for(var i=0;i<particles.length;i++){
+      var p = particles[i];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(255,255,255,' + p.opacity + ')';
+      ctx.fill();
+      p.y += p.speed;
+      p.x += p.drift;
+      if(p.y > window.innerHeight + 10){
+        particles[i] = makeParticle(false);
+      }
+    }
+    requestAnimationFrame(animateStars);
+  }
+  resizeCanvas();
+  initParticles();
+  animateStars();
+  window.addEventListener('resize', function(){
+    resizeCanvas();
+  });
+
+})();
+</script>
+</body>
+</html>
