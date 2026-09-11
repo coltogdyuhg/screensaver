@@ -680,19 +680,27 @@
     var attempts = [
       url,
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-      'https://corsproxy.io/?' + encodeURIComponent(url)
+      'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+      'https://corsproxy.io/?url=' + encodeURIComponent(url)
     ];
     var i = 0;
+    function fetchWithTimeout(u, ms){
+      var controller = new AbortController();
+      var timer = setTimeout(function(){ controller.abort(); }, ms);
+      return fetch(u, {cache:'no-store', signal: controller.signal}).finally(function(){
+        clearTimeout(timer);
+      });
+    }
     function tryNext(){
       if(i >= attempts.length) return Promise.resolve(null);
       var attemptUrl = attempts[i]; i++;
-      return fetch(attemptUrl, {cache:'no-store'}).then(function(res){
+      return fetchWithTimeout(attemptUrl, 8000).then(function(res){
         if(!res.ok) return tryNext();
         return res.text().then(function(txt){
           if(txt && txt.indexOf('BEGIN:VCALENDAR') !== -1) return txt;
           return tryNext();
         });
-      }).catch(tryNext);
+      }).catch(function(){ return tryNext(); });
     }
     return tryNext();
   }
@@ -770,6 +778,7 @@
     if(calRefreshTimer) clearTimeout(calRefreshTimer);
     if(!state.calLink){
       showCalPane('empty');
+      calEmpty.textContent = "No calendar linked yet. Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.";
       calStatus.textContent = '';
       return;
     }
@@ -781,12 +790,14 @@
       return;
     }
     calStatus.textContent = 'Loading calendar…';
+    showCalPane('empty');
+    calEmpty.textContent = 'Loading your calendar…';
     var url = normalizeIcsUrl(state.calLink);
     fetchWithFallback(url).then(function(text){
       if(!text){
         calStatus.textContent = "Couldn't load that calendar link. Double-check it's a public share link and try again.";
         showCalPane('empty');
-        calEmpty.textContent = "Couldn't load that calendar. Make sure it's a public link (in Apple Calendar: Calendar app → right-click the calendar → Share Calendar → Public Calendar → Copy Link), then save it again.";
+        calEmpty.textContent = "Couldn't load that calendar. In the Calendar app: right-click the calendar → Share Calendar → turn on Public Calendar → Copy Link, then paste it above and hit Save again. If it still fails, the calendar server may be blocking outside access.";
         return;
       }
       var events = parseIcs(text);
