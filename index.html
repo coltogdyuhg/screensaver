@@ -1,3 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard</title>
+<style>
+  :root{
+    --white: #ffffff;
+    --dim: rgba(255,255,255,0.55);
+    --faint: rgba(255,255,255,0.18);
+    --font: 'Helvetica Neue', Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:#000; color:var(--white); font-family:var(--font);
+    overflow:hidden;
+  }
+  #stars{position:fixed; inset:0; z-index:0; display:block;}
+
+  #stage{
+    position:fixed; inset:0; z-index:1;
+  }
+
+  .widget{
+    position:absolute;
+    color:var(--white);
+    user-select:none;
+    font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
+  }
+
+  /* ---------- top bar controls ---------- */
+  #topControls{
+    position:fixed; top:14px; right:16px; z-index:50;
+    display:flex; gap:10px;
+  }
+  #editControls{
+    position:fixed; top:14px; left:16px; z-index:50;
+    display:flex; gap:10px; align-items:center;
+  }
+  .iconBtn{
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.25);
+    color:var(--white);
+    border-radius:8px;
+    width:38px; height:38px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+    font-size:16px;
+    backdrop-filter:blur(4px);
+    transition:background 0.15s ease;
+  }
+  .iconBtn:hover{background:rgba(255,255,255,0.18);}
+  .iconBtn.active{background:rgba(255,255,255,0.35); border-color:#fff;}
+  .iconBtn.disabled{opacity:0.3; cursor:default; pointer-events:none;}
+  #editHint{
+    font-size:12px; color:var(--dim); letter-spacing:0.02em;
+    display:none;
+  }
+  body.edit-mode #editHint{display:inline;}
+
+  /* ---------- drag handle, shown only in edit mode ---------- */
+  .dragHandle{
+    display:none;
+    position:absolute; top:-22px; left:0;
+    font-size:11px; color:#000; background:var(--white);
+    padding:3px 8px; border-radius:6px 6px 0 0;
+    cursor:grab; letter-spacing:0.03em;
+  }
+  body.edit-mode .widget{outline:1px dashed rgba(255,255,255,0.35); border-radius:10px;}
+  body.edit-mode .dragHandle{display:block;}
+  body.edit-mode .widget.dragging{outline:1px solid #fff;}
+
+  /* ---------- countdown widgets ---------- */
+  .countdown{
+    text-align:center;
+    padding:6px 10px;
+  }
+  .countdown .cd-label{
+    font-size:calc(15px * var(--wscale, 1));
+    letter-spacing:0.08em;
+    outline:none;
+    display:inline-block;
+    min-width:20px;
+  }
+  .countdown .cd-colon{ margin:0 4px; opacity:0.6; }
+  .countdown .cd-days{
+    font-size:calc(15px * var(--wscale, 1));
+    font-weight:600;
+  }
+  .countdown .cd-sub{
+    font-size:10px; color:var(--dim); margin-top:2px; letter-spacing:0.05em;
+  }
+  .countdown .cd-editrow{
+    display:none; margin-top:8px;
+  }
+  body.edit-mode .countdown .cd-editrow{ display:flex; justify-content:center; gap:6px; }
+  .countdown input[type="date"]{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:11px; border-radius:5px; padding:3px 5px; font-family:var(--font);
+  }
+  body.edit-mode .cd-label{ background:rgba(255,255,255,0.08); border-radius:4px; padding:0 4px; cursor:text; }
+
+  /* ---------- per-widget font controls ---------- */
+  .fontRow{ display:none; margin-top:8px; gap:6px; justify-content:center; align-items:center; }
+  body.edit-mode .fontRow{ display:flex; }
+  .fontRow select, .fontRow input[type="range"]{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:10px; border-radius:5px; padding:3px 4px; font-family:var(--font);
+  }
+  .fontRow select{ max-width:96px; }
+  .fontRow input[type="range"]{ width:70px; }
+
+  /* ---------- clock widget ---------- */
+  .clockw{ padding:10px; }
+  .clockw .time{
+    font-size:calc(64px * var(--wscale, 1)); font-weight:200; line-height:1; letter-spacing:-0.01em;
+  }
+  .clockw .time .ampm{ font-size:calc(22px * var(--wscale, 1)); font-weight:300; margin-left:6px; color:var(--dim);}
+  .clockw .day{ font-size:calc(24px * var(--wscale, 1)); font-weight:500; margin-top:10px; letter-spacing:0.04em; }
+  .clockw .date{ font-size:calc(16px * var(--wscale, 1)); color:var(--dim); margin-top:2px; letter-spacing:0.03em; }
+  .clockw .fontRow{ justify-content:flex-start; }
+
+  /* ---------- calendar widget ---------- */
+  .calw{ display:flex; flex-direction:column; }
+  .calw .calLinkRow{
+    display:none; gap:6px; margin-bottom:6px; align-items:center;
+  }
+  body.edit-mode .calw .calLinkRow{ display:flex; }
+  .calw .calLinkRow input{
+    flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+  }
+  .calw .calLinkRow button{
+    background:var(--white); color:#000; border:none; border-radius:6px;
+    padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
+  }
+  .calw iframe{
+    width:100%; flex:1; border:1px solid rgba(255,255,255,0.18); border-radius:10px;
+    background:#000;
+    filter: invert(94%) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+  }
+  .calStatus{
+    display:none; font-size:11px; color:var(--dim); margin-bottom:6px; min-height:14px;
+  }
+  body.edit-mode .calStatus{ display:block; }
+  .calBody{ flex:1; display:flex; flex-direction:column; min-height:0; }
+  .calw .calEmpty{
+    flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
+    color:var(--dim); font-size:14px; border:1px dashed rgba(255,255,255,0.25); border-radius:10px; padding:20px;
+  }
+  .calAgenda{
+    flex:1; display:flex; gap:16px; min-height:0;
+  }
+  .calGrid{
+    flex:0 0 46%;
+    display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
+    align-content:start;
+  }
+  .calGrid .calGridHead{
+    text-align:center; font-size:11px; color:var(--dim); letter-spacing:0.05em; padding-bottom:4px;
+  }
+  .calGrid .calMonthLabel{
+    grid-column:1 / -1; font-size:16px; font-weight:600; margin-bottom:6px; letter-spacing:0.02em;
+  }
+  .calGrid .calDay{
+    aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:12px; border-radius:6px; color:var(--dim); position:relative;
+  }
+  .calGrid .calDay.inMonth{ color:#fff; }
+  .calGrid .calDay.today{ background:rgba(255,255,255,0.2); font-weight:700; color:#fff; }
+  .calGrid .calDay .dot{
+    width:4px; height:4px; border-radius:50%; background:#fff; margin-top:2px; opacity:0.8;
+  }
+  .calList{
+    flex:1; overflow-y:auto; min-height:0;
+  }
+  .calList::-webkit-scrollbar{ width:5px; }
+  .calList::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.2); border-radius:3px; }
+  .calList .calListTitle{ font-size:11px; color:var(--dim); letter-spacing:0.08em; margin-bottom:8px; }
+  .calList .calEvt{
+    display:flex; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.08);
+  }
+  .calList .calEvt .evtWhen{ flex:0 0 78px; font-size:12px; color:var(--dim); }
+  .calList .calEvt .evtName{ font-size:13px; }
+  .calList .calEmptyList{ color:var(--dim); font-size:12px; padding:8px 0; }
+
+  /* ---------- ticker ---------- */
+  #tickerWrap{
+    position:fixed; left:0; right:0; bottom:0; height:56px; z-index:20;
+    background:rgba(0,0,0,0.55); border-top:1px solid rgba(255,255,255,0.15);
+    overflow:hidden; display:flex; align-items:center;
+    backdrop-filter:blur(3px);
+    font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
+  }
+  #tickerTrack{
+    white-space:nowrap; position:absolute; will-change:transform;
+    font-size:calc(20px * var(--wscale, 1)); letter-spacing:0.02em; padding-left:100%;
+  }
+  #tickerEdit{
+    display:none; position:fixed; left:16px; right:16px; bottom:64px; z-index:50;
+    background:rgba(20,20,20,0.9); border:1px solid rgba(255,255,255,0.25);
+    border-radius:10px; padding:10px 14px; gap:10px 14px; align-items:center; flex-wrap:wrap;
+  }
+  body.edit-mode #tickerEdit{ display:flex; }
+  #tickerEdit input[type="text"]{
+    flex:1; min-width:160px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:13px; border-radius:6px; padding:7px 10px; font-family:var(--font);
+  }
+  #tickerEdit label{ font-size:11px; color:var(--dim); display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  #tickerEdit input[type="range"]{ width:110px; }
+  #tickerEdit select{
+    background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+
+<div id="stage">
+  <div class="widget countdown" id="w-vacation" data-id="vacation">
+    <div class="dragHandle">⠿ move</div>
+    <span class="cd-label" contenteditable="false" data-key="vacation-label">Vacation</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+    <div class="cd-editrow"><input type="date" class="cd-date" data-key="vacation-date"></div>
+    <div class="fontRow"><select class="font-select" data-id="vacation"></select><input type="range" class="font-scale" data-id="vacation" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget countdown" id="w-christmas" data-id="christmas">
+    <div class="dragHandle">⠿ move</div>
+    <span class="cd-label" contenteditable="false" data-key="christmas-label">Christmas</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+    <div class="cd-editrow"><input type="date" class="cd-date" data-key="christmas-date"></div>
+    <div class="fontRow"><select class="font-select" data-id="christmas"></select><input type="range" class="font-scale" data-id="christmas" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget countdown" id="w-halloween" data-id="halloween">
+    <div class="dragHandle">⠿ move</div>
+    <span class="cd-label" contenteditable="false" data-key="halloween-label">Halloween</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+    <div class="cd-editrow"><input type="date" class="cd-date" data-key="halloween-date"></div>
+    <div class="fontRow"><select class="font-select" data-id="halloween"></select><input type="range" class="font-scale" data-id="halloween" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget clockw" id="w-clock" data-id="clock">
+    <div class="dragHandle">⠿ move</div>
+    <div class="time"><span class="hm">--:--</span><span class="ampm">AM</span></div>
+    <div class="day">-</div>
+    <div class="date">-</div>
+    <div class="fontRow"><select class="font-select" data-id="clock"></select><input type="range" class="font-scale" data-id="clock" min="0.6" max="2" step="0.1"></div>
+  </div>
+
+  <div class="widget calw" id="w-calendar" data-id="calendar">
+    <div class="dragHandle">⠿ move</div>
+    <div class="calLinkRow">
+      <input type="text" id="calLinkInput" placeholder="Paste Google Embed or iCal (.ics) link here">
+      <button id="calLinkSave">Save</button>
+    </div>
+    <div class="calStatus" id="calStatus"></div>
+    <div class="calBody" id="calBody">
+      <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.</div>
+      <iframe id="calFrame" style="display:none;"></iframe>
+      <div class="calAgenda" id="calAgenda" style="display:none;">
+        <div class="calGrid" id="calGrid"></div>
+        <div class="calList" id="calList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tickerWrap">
+  <div id="tickerTrack">Welcome to the dashboard</div>
+</div>
+<div id="tickerEdit">
+  <input type="text" id="tickerTextInput" placeholder="Scrolling sign text...">
+  <label>Speed <input type="range" id="tickerSpeedInput" min="5" max="60" value="25"></label>
+  <select class="font-select" data-id="ticker"></select>
+  <label>Size <input type="range" class="font-scale" data-id="ticker" min="0.6" max="2" step="0.1"></label>
+</div>
+
+<div id="editControls">
+  <div class="iconBtn" id="editToggle" title="Edit layout">✎</div>
+  <div class="iconBtn disabled" id="undoBtn" title="Undo last change">↺</div>
+  <span id="editHint">Edit mode — drag by the handle, edit text &amp; dates, tweak fonts</span>
+</div>
+<div id="topControls">
+  <div class="iconBtn" id="fsToggle" title="Fullscreen">⛶</div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -6,7 +295,6 @@
   var stage = document.getElementById('stage');
   var body = document.body;
 
-  /* ---------------- defaults ---------------- */
   var defaults = {
     positions: {
       vacation:  {left:2,  top:2,  width:28, height:null},
@@ -84,7 +372,6 @@
 
   var state = loadState();
 
-  /* ---------------- apply positions ---------------- */
   function applyPositions(){
     Object.keys(state.positions).forEach(function(id){
       var el = document.getElementById('w-'+id);
@@ -98,7 +385,6 @@
   }
   applyPositions();
 
-  /* ---------------- undo history ---------------- */
   var history = [];
   var pendingSnapshot = null;
   var undoBtn = document.getElementById('undoBtn');
@@ -119,7 +405,6 @@
   }
   updateUndoBtn();
 
-  /* ---------------- fonts ---------------- */
   function applyFonts(){
     Object.keys(state.fonts).forEach(function(id){
       var el = id === 'ticker' ? document.getElementById('tickerWrap') : document.getElementById('w-'+id);
@@ -173,7 +458,6 @@
     rng.addEventListener('change', commitEdit);
   });
 
-  /* ---------------- apply text/dates ---------------- */
   document.querySelectorAll('[data-key]').forEach(function(el){
     var key = el.getAttribute('data-key');
     if(el.tagName === 'INPUT'){
@@ -186,7 +470,6 @@
   document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
   document.getElementById('calLinkInput').value = state.calLink;
 
-  /* ---------------- clock ---------------- */
   var dayNames = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   var monNames = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   function tickClock(){
@@ -218,7 +501,6 @@
   tickClock();
   setInterval(tickClock, 1000 * 15);
 
-  /* ---------------- countdown date & text inputs ---------------- */
   document.querySelectorAll('.cd-date').forEach(function(inp){
     inp.addEventListener('focus', beginEdit);
     inp.addEventListener('change', function(){
@@ -242,7 +524,6 @@
     });
   });
 
-  /* ---------------- calendar parsing & rendering engine ---------------- */
   var calFrame = document.getElementById('calFrame');
   var calEmpty = document.getElementById('calEmpty');
   var calAgenda = document.getElementById('calAgenda');
@@ -386,9 +667,9 @@
 
   function fetchWithFallback(url){
     var attempts = [
-      url,
+      'https://corsproxy.io/?url=' + encodeURIComponent(url),
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-      'https://corsproxy.io/?url=' + encodeURIComponent(url)
+      url
     ];
     var i = 0;
     function fetchWithTimeout(u, ms){
@@ -401,7 +682,7 @@
     function tryNext(){
       if(i >= attempts.length) return Promise.resolve(null);
       var attemptUrl = attempts[i]; i++;
-      return fetchWithTimeout(attemptUrl, 8000).then(function(res){
+      return fetchWithTimeout(attemptUrl, 5000).then(function(res){
         if(!res.ok) return tryNext();
         return res.text().then(function(txt){
           if(txt && (txt.indexOf('BEGIN:VCALENDAR') !== -1 || txt.indexOf('BEGIN:VEVENT') !== -1)) return txt;
@@ -492,7 +773,6 @@
     var raw = state.calLink.trim();
     var embedUrl = extractEmbedLink(raw);
 
-    // If it's a Google Calendar HTML iframe embed link, use iframe mode directly
     if(/calendar\.google\.com\/calendar\/embed/i.test(embedUrl)){
       calStatus.textContent = '';
       calFrame.src = embedUrl;
@@ -500,21 +780,19 @@
       return;
     }
 
-    // Otherwise treat it as an iCal / .ics / webcal link (Apple, iCloud, Outlook, or Google secret iCal address)
     var icsUrl = normalizeIcsUrl(embedUrl);
     calStatus.textContent = 'Loading calendar events...';
 
     fetchWithFallback(icsUrl).then(function(text){
       if(!text){
         showCalPane('empty');
-        calStatus.textContent = 'Error: Could not load calendar feed (CORS or invalid URL).';
+        calStatus.textContent = 'Error: Could not load calendar feed.';
         calEmpty.innerHTML = "Failed to load feed.<br>Make sure your iCal URL is public/shared properly.";
         return;
       }
       var events = parseIcs(text);
       calStatus.textContent = 'Synced ' + events.length + ' base events';
       renderAgenda(events);
-      // Auto refresh every 30 mins
       calRefreshTimer = setTimeout(loadCalendar, 30 * 60 * 1000);
     }).catch(function(err){
       showCalPane('empty');
@@ -533,7 +811,6 @@
     setTimeout(function(){ if(calStatus.textContent === 'Saved!') calStatus.textContent = ''; }, 2000);
   });
 
-  /* ---------------- ticker updates ---------------- */
   var tickerTrack = document.getElementById('tickerTrack');
   var tickerWrap = document.getElementById('tickerWrap');
   var tickerAnim = null;
@@ -567,7 +844,6 @@
     saveState();
   });
 
-  /* ---------------- drag & drop widgets ---------------- */
   var activeWidget = null;
   var dragOffsetX = 0, dragOffsetY = 0;
 
@@ -614,7 +890,6 @@
     });
   });
 
-  /* ---------------- top bar controls ---------------- */
   var editToggle = document.getElementById('editToggle');
   editToggle.addEventListener('click', function(){
     body.classList.toggle('edit-mode');
@@ -649,7 +924,6 @@
     }
   });
 
-  /* ---------------- background starfield animation ---------------- */
   var canvas = document.getElementById('stars');
   var ctx = canvas.getContext('2d');
   var stars = [];
@@ -683,3 +957,5 @@
 
 })();
 </script>
+</body>
+</html>
