@@ -1,1012 +1,1584 @@
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Dashboard</title>
+
 <style>
+
   :root{
+
     --white: #ffffff;
+
     --dim: rgba(255,255,255,0.55);
+
     --faint: rgba(255,255,255,0.18);
+
     --font: 'Helvetica Neue', Arial, sans-serif;
+
   }
+
   *{box-sizing:border-box;}
+
   html,body{
+
     margin:0; padding:0; width:100%; height:100%;
+
     background:#000; color:var(--white); font-family:var(--font);
+
     overflow:hidden;
+
   }
+
   #stars{position:fixed; inset:0; z-index:0; display:block;}
 
+
+
   #stage{
+
     position:fixed; inset:0; z-index:1;
+
   }
+
+
 
   .widget{
+
     position:absolute;
+
     color:var(--white);
+
     user-select:none;
+
     font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
+
   }
+
+
 
   /* ---------- top bar controls ---------- */
+
   #topControls{
+
     position:fixed; top:14px; right:16px; z-index:50;
+
     display:flex; gap:10px;
+
   }
+
   #editControls{
+
     position:fixed; top:14px; left:16px; z-index:50;
+
     display:flex; gap:10px; align-items:center;
+
   }
+
   .iconBtn{
+
     background:rgba(255,255,255,0.08);
+
     border:1px solid rgba(255,255,255,0.25);
+
     color:var(--white);
+
     border-radius:8px;
+
     width:38px; height:38px;
+
     display:flex; align-items:center; justify-content:center;
+
     cursor:pointer;
+
     font-size:16px;
+
     backdrop-filter:blur(4px);
+
     transition:background 0.15s ease;
+
   }
+
   .iconBtn:hover{background:rgba(255,255,255,0.18);}
+
   .iconBtn.active{background:rgba(255,255,255,0.35); border-color:#fff;}
+
   .iconBtn.disabled{opacity:0.3; cursor:default; pointer-events:none;}
+
   #editHint{
+
     font-size:12px; color:var(--dim); letter-spacing:0.02em;
+
     display:none;
+
   }
+
   body.edit-mode #editHint{display:inline;}
 
+
+
   /* ---------- drag handle, shown only in edit mode ---------- */
+
   .dragHandle{
+
     display:none;
+
     position:absolute; top:-22px; left:0;
+
     font-size:11px; color:#000; background:var(--white);
+
     padding:3px 8px; border-radius:6px 6px 0 0;
+
     cursor:grab; letter-spacing:0.03em;
+
   }
+
   body.edit-mode .widget{outline:1px dashed rgba(255,255,255,0.35); border-radius:10px;}
+
   body.edit-mode .dragHandle{display:block;}
+
   body.edit-mode .widget.dragging{outline:1px solid #fff;}
 
+
+
   /* ---------- countdown widgets ---------- */
+
   .countdown{
+
     text-align:center;
+
     padding:6px 10px;
+
   }
+
   .countdown .cd-label{
+
     font-size:calc(15px * var(--wscale, 1));
+
     letter-spacing:0.08em;
+
     outline:none;
+
     display:inline-block;
+
     min-width:20px;
+
   }
+
   .countdown .cd-colon{ margin:0 4px; opacity:0.6; }
+
   .countdown .cd-days{
+
     font-size:calc(15px * var(--wscale, 1));
+
     font-weight:600;
+
   }
+
   .countdown .cd-sub{
+
     font-size:10px; color:var(--dim); margin-top:2px; letter-spacing:0.05em;
+
   }
+
   .countdown .cd-editrow{
+
     display:none; margin-top:8px;
+
   }
+
   body.edit-mode .countdown .cd-editrow{ display:flex; justify-content:center; gap:6px; }
+
   .countdown input[type="date"]{
+
     background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+
     color:#fff; font-size:11px; border-radius:5px; padding:3px 5px; font-family:var(--font);
+
   }
+
   body.edit-mode .cd-label{ background:rgba(255,255,255,0.08); border-radius:4px; padding:0 4px; cursor:text; }
 
+
+
   /* ---------- per-widget font controls ---------- */
+
   .fontRow{ display:none; margin-top:8px; gap:6px; justify-content:center; align-items:center; }
+
   body.edit-mode .fontRow{ display:flex; }
+
   .fontRow select, .fontRow input[type="range"]{
+
     background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+
     color:#fff; font-size:10px; border-radius:5px; padding:3px 4px; font-family:var(--font);
+
   }
+
   .fontRow select{ max-width:96px; }
+
   .fontRow input[type="range"]{ width:70px; }
 
+
+
   /* ---------- clock widget ---------- */
+
   .clockw{ padding:10px; }
+
   .clockw .time{
+
     font-size:calc(64px * var(--wscale, 1)); font-weight:200; line-height:1; letter-spacing:-0.01em;
+
   }
+
   .clockw .time .ampm{ font-size:calc(22px * var(--wscale, 1)); font-weight:300; margin-left:6px; color:var(--dim);}
+
   .clockw .day{ font-size:calc(24px * var(--wscale, 1)); font-weight:500; margin-top:10px; letter-spacing:0.04em; }
+
   .clockw .date{ font-size:calc(16px * var(--wscale, 1)); color:var(--dim); margin-top:2px; letter-spacing:0.03em; }
+
   .clockw .fontRow{ justify-content:flex-start; }
 
+
+
   /* ---------- calendar widget ---------- */
+
   .calw{ display:flex; flex-direction:column; }
+
   .calw .calLinkRow{
+
     display:none; gap:6px; margin-bottom:6px; align-items:center;
+
   }
+
   body.edit-mode .calw .calLinkRow{ display:flex; }
+
   .calw .calLinkRow input{
+
     flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+
     color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+
   }
+
   .calw .calLinkRow button{
+
     background:var(--white); color:#000; border:none; border-radius:6px;
+
     padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
+
   }
+
   .calw iframe{
+
     width:100%; flex:1; border:1px solid rgba(255,255,255,0.18); border-radius:10px;
+
     background:#000;
+
     filter: invert(94%) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+
   }
+
   .calStatus{
+
     display:none; font-size:11px; color:var(--dim); margin-bottom:6px; min-height:14px;
+
   }
+
   body.edit-mode .calStatus{ display:block; }
+
   .calBody{ flex:1; display:flex; flex-direction:column; min-height:0; }
+
   .calw .calEmpty{
+
     flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
+
     color:var(--dim); font-size:14px; border:1px dashed rgba(255,255,255,0.25); border-radius:10px; padding:20px;
+
   }
+
   .calAgenda{
+
     flex:1; display:flex; gap:16px; min-height:0;
+
   }
+
   .calGrid{
+
     flex:0 0 46%;
+
     display:grid; grid-template-columns:repeat(7,1fr); gap:4px;
+
     align-content:start;
+
   }
+
   .calGrid .calGridHead{
+
     text-align:center; font-size:11px; color:var(--dim); letter-spacing:0.05em; padding-bottom:4px;
+
   }
+
   .calGrid .calMonthLabel{
+
     grid-column:1 / -1; font-size:16px; font-weight:600; margin-bottom:6px; letter-spacing:0.02em;
+
   }
+
   .calGrid .calDay{
+
     aspect-ratio:1/1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+
     font-size:12px; border-radius:6px; color:var(--dim); position:relative;
+
   }
+
   .calGrid .calDay.inMonth{ color:#fff; }
+
   .calGrid .calDay.today{ background:rgba(255,255,255,0.2); font-weight:700; color:#fff; }
+
   .calGrid .calDay .dot{
+
     width:4px; height:4px; border-radius:50%; background:#fff; margin-top:2px; opacity:0.8;
+
   }
+
   .calList{
+
     flex:1; overflow-y:auto; min-height:0;
+
   }
+
   .calList::-webkit-scrollbar{ width:5px; }
+
   .calList::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.2); border-radius:3px; }
+
   .calList .calListTitle{ font-size:11px; color:var(--dim); letter-spacing:0.08em; margin-bottom:8px; }
+
   .calList .calEvt{
+
     display:flex; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.08);
+
   }
+
   .calList .calEvt .evtWhen{ flex:0 0 78px; font-size:12px; color:var(--dim); }
+
   .calList .calEvt .evtName{ font-size:13px; }
+
   .calList .calEmptyList{ color:var(--dim); font-size:12px; padding:8px 0; }
 
+
+
   /* ---------- ticker ---------- */
+
   #tickerWrap{
+
     position:fixed; left:0; right:0; bottom:0; height:56px; z-index:20;
+
     background:rgba(0,0,0,0.55); border-top:1px solid rgba(255,255,255,0.15);
+
     overflow:hidden; display:flex; align-items:center;
+
     backdrop-filter:blur(3px);
+
     font-family: var(--wfont, 'Helvetica Neue', Arial, sans-serif);
+
   }
+
   #tickerTrack{
+
     white-space:nowrap; position:absolute; will-change:transform;
+
     font-size:calc(20px * var(--wscale, 1)); letter-spacing:0.02em; padding-left:100%;
+
   }
+
   #tickerEdit{
+
     display:none; position:fixed; left:16px; right:16px; bottom:64px; z-index:50;
+
     background:rgba(20,20,20,0.9); border:1px solid rgba(255,255,255,0.25);
+
     border-radius:10px; padding:10px 14px; gap:10px 14px; align-items:center; flex-wrap:wrap;
+
   }
+
   body.edit-mode #tickerEdit{ display:flex; }
+
   #tickerEdit input[type="text"]{
+
     flex:1; min-width:160px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+
     color:#fff; font-size:13px; border-radius:6px; padding:7px 10px; font-family:var(--font);
+
   }
+
   #tickerEdit label{ font-size:11px; color:var(--dim); display:flex; align-items:center; gap:6px; white-space:nowrap; }
+
   #tickerEdit input[type="range"]{ width:110px; }
+
   #tickerEdit select{
+
     background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+
     color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+
   }
+
 </style>
+
 </head>
+
 <body>
+
+
 
 <canvas id="stars"></canvas>
 
+
+
 <div id="stage">
+
   <div class="widget countdown" id="w-vacation" data-id="vacation">
+
     <div class="dragHandle">⠿ move</div>
+
     <span class="cd-label" contenteditable="false" data-key="vacation-label">Vacation</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+
     <div class="cd-editrow"><input type="date" class="cd-date" data-key="vacation-date"></div>
+
     <div class="fontRow"><select class="font-select" data-id="vacation"></select><input type="range" class="font-scale" data-id="vacation" min="0.6" max="2" step="0.1"></div>
+
   </div>
+
+
 
   <div class="widget countdown" id="w-christmas" data-id="christmas">
+
     <div class="dragHandle">⠿ move</div>
+
     <span class="cd-label" contenteditable="false" data-key="christmas-label">Christmas</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+
     <div class="cd-editrow"><input type="date" class="cd-date" data-key="christmas-date"></div>
+
     <div class="fontRow"><select class="font-select" data-id="christmas"></select><input type="range" class="font-scale" data-id="christmas" min="0.6" max="2" step="0.1"></div>
+
   </div>
+
+
 
   <div class="widget countdown" id="w-halloween" data-id="halloween">
+
     <div class="dragHandle">⠿ move</div>
+
     <span class="cd-label" contenteditable="false" data-key="halloween-label">Halloween</span><span class="cd-colon">::</span><span class="cd-days">--</span>
+
     <div class="cd-editrow"><input type="date" class="cd-date" data-key="halloween-date"></div>
+
     <div class="fontRow"><select class="font-select" data-id="halloween"></select><input type="range" class="font-scale" data-id="halloween" min="0.6" max="2" step="0.1"></div>
+
   </div>
+
+
 
   <div class="widget clockw" id="w-clock" data-id="clock">
+
     <div class="dragHandle">⠿ move</div>
+
     <div class="time"><span class="hm">--:--</span><span class="ampm">AM</span></div>
+
     <div class="day">-</div>
+
     <div class="date">-</div>
+
     <div class="fontRow"><select class="font-select" data-id="clock"></select><input type="range" class="font-scale" data-id="clock" min="0.6" max="2" step="0.1"></div>
+
   </div>
+
+
 
   <div class="widget calw" id="w-calendar" data-id="calendar">
+
     <div class="dragHandle">⠿ move</div>
+
     <div class="calLinkRow">
+
       <input type="text" id="calLinkInput" placeholder="Paste a Google Calendar link OR the full <iframe> embed code, or an Apple/iCloud public calendar link">
+
       <button id="calLinkSave">Save</button>
+
     </div>
+
     <div class="calStatus" id="calStatus"></div>
+
     <div class="calBody" id="calBody">
+
       <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.</div>
+
       <iframe id="calFrame" style="display:none;"></iframe>
+
       <div class="calAgenda" id="calAgenda" style="display:none;">
+
         <div class="calGrid" id="calGrid"></div>
+
         <div class="calList" id="calList"></div>
+
       </div>
+
     </div>
+
   </div>
+
 </div>
+
+
 
 <div id="tickerWrap">
+
   <div id="tickerTrack">Welcome to the dashboard</div>
+
 </div>
+
 <div id="tickerEdit">
+
   <input type="text" id="tickerTextInput" placeholder="Scrolling sign text...">
+
   <label>Speed <input type="range" id="tickerSpeedInput" min="5" max="60" value="25"></label>
+
   <select class="font-select" data-id="ticker"></select>
+
   <label>Size <input type="range" class="font-scale" data-id="ticker" min="0.6" max="2" step="0.1"></label>
+
 </div>
+
+
 
 <div id="editControls">
+
   <div class="iconBtn" id="editToggle" title="Edit layout">✎</div>
+
   <div class="iconBtn disabled" id="undoBtn" title="Undo last change">↺</div>
+
   <span id="editHint">Edit mode — drag by the handle, edit text &amp; dates, tweak fonts</span>
+
 </div>
+
 <div id="topControls">
+
   <div class="iconBtn" id="fsToggle" title="Fullscreen">⛶</div>
+
 </div>
+
+
 
 <script>
+
 (function(){
+
   "use strict";
 
+
+
   var STORAGE_KEY = "dakboard_layout_v1";
+
   var stage = document.getElementById('stage');
+
   var body = document.body;
 
+
+
   /* ---------------- defaults ---------------- */
+
   var defaults = {
+
     positions: {
+
       vacation:  {left:2,  top:2,  width:28, height:null},
+
       christmas: {left:36, top:2,  width:28, height:null},
+
       halloween: {left:70, top:2,  width:28, height:null},
+
       clock:     {left:2,  top:34, width:28, height:null},
+
       calendar:  {left:34, top:14, width:64, height:70}
+
     },
+
     text: {
+
       "vacation-label": "Vacation",
+
       "christmas-label": "Christmas",
+
       "halloween-label": "Halloween",
+
       "ticker-text": "Welcome to the dashboard  •  edit me in edit mode  •  add whatever you like here"
+
     },
+
     dates: {
+
       "vacation-date": "",
+
       "christmas-date": nextDec25(),
+
       "halloween-date": nextDateThisYearOrNext(9,31)
+
     },
+
     calLink: "",
+
     tickerSpeed: 25,
+
     fonts: {
+
       vacation:  {family:"", scale:1},
+
       christmas: {family:"", scale:1},
+
       halloween: {family:"", scale:1},
+
       clock:     {family:"", scale:1},
+
       ticker:    {family:"", scale:1}
+
     }
+
   };
 
+
+
   var FONT_OPTIONS = [
+
     {label:"Default",  value:"'Helvetica Neue', Arial, sans-serif"},
+
     {label:"Serif",    value:"Georgia, 'Times New Roman', serif"},
+
     {label:"Mono",     value:"'Courier New', monospace"},
+
     {label:"Rounded",  value:"'Trebuchet MS', sans-serif"},
+
     {label:"Elegant",  value:"'Palatino Linotype', Palatino, serif"},
+
     {label:"Playful",  value:"'Comic Sans MS', cursive"},
+
     {label:"Bold",     value:"Impact, Haettenschweiler, sans-serif"},
+
     {label:"Verdana",  value:"Verdana, Geneva, sans-serif"}
+
   ];
 
+
+
   function nextDec25(){
+
     var now = new Date();
+
     var y = now.getMonth() === 11 && now.getDate() > 25 ? now.getFullYear()+1 : now.getFullYear();
+
     return y + "-12-25";
-  }
-  function nextDateThisYearOrNext(monthIndex, day){
-    var now = new Date();
-    var y = now.getFullYear();
-    var d = new Date(y, monthIndex, day);
-    if (d < new Date(now.getFullYear(), now.getMonth(), now.getDate())) y += 1;
-    var mm = String(monthIndex+1).padStart(2,'0');
-    var dd = String(day).padStart(2,'0');
-    return y + "-" + mm + "-" + dd;
+
   }
 
-  function loadState(){
-    try{
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return JSON.parse(JSON.stringify(defaults));
-      var parsed = JSON.parse(raw);
-      // merge shallowly with defaults so new fields don't break old saves
-      var merged = JSON.parse(JSON.stringify(defaults));
-      merged.positions = Object.assign(merged.positions, parsed.positions || {});
-      merged.text = Object.assign(merged.text, parsed.text || {});
-      merged.dates = Object.assign(merged.dates, parsed.dates || {});
-      merged.calLink = parsed.calLink || "";
-      merged.tickerSpeed = parsed.tickerSpeed || 25;
-      merged.fonts = Object.assign(merged.fonts, parsed.fonts || {});
-      return merged;
-    }catch(e){
-      return JSON.parse(JSON.stringify(defaults));
-    }
+  function nextDateThisYearOrNext(monthIndex, day){
+
+    var now = new Date();
+
+    var y = now.getFullYear();
+
+    var d = new Date(y, monthIndex, day);
+
+    if (d < new Date(now.getFullYear(), now.getMonth(), now.getDate())) y += 1;
+
+    var mm = String(monthIndex+1).padStart(2,'0');
+
+    var dd = String(day).padStart(2,'0');
+
+    return y + "-" + mm + "-" + dd;
+
   }
+
+
+
+  function loadState(){
+
+    try{
+
+      var raw = localStorage.getItem(STORAGE_KEY);
+
+      if(!raw) return JSON.parse(JSON.stringify(defaults));
+
+      var parsed = JSON.parse(raw);
+
+      // merge shallowly with defaults so new fields don't break old saves
+
+      var merged = JSON.parse(JSON.stringify(defaults));
+
+      merged.positions = Object.assign(merged.positions, parsed.positions || {});
+
+      merged.text = Object.assign(merged.text, parsed.text || {});
+
+      merged.dates = Object.assign(merged.dates, parsed.dates || {});
+
+      merged.calLink = parsed.calLink || "";
+
+      merged.tickerSpeed = parsed.tickerSpeed || 25;
+
+      merged.fonts = Object.assign(merged.fonts, parsed.fonts || {});
+
+      return merged;
+
+    }catch(e){
+
+      return JSON.parse(JSON.stringify(defaults));
+
+    }
+
+  }
+
   function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+
 
   var state = loadState();
 
+
+
   /* ---------------- apply positions ---------------- */
+
   function applyPositions(){
+
     Object.keys(state.positions).forEach(function(id){
+
       var el = document.getElementById('w-'+id);
+
       if(!el) return;
+
       var p = state.positions[id];
+
       el.style.left = p.left + '%';
+
       el.style.top = p.top + '%';
+
       if(p.width != null) el.style.width = p.width + '%';
+
       if(p.height != null) el.style.height = p.height + '%';
+
     });
+
   }
+
   applyPositions();
 
+
+
   /* ---------------- undo history ---------------- */
+
   var history = [];
+
   var pendingSnapshot = null;
+
   var undoBtn = document.getElementById('undoBtn');
+
   function beginEdit(){
+
     if(pendingSnapshot === null) pendingSnapshot = JSON.stringify(state);
+
   }
+
   function commitEdit(){
+
     if(pendingSnapshot !== null){
+
       history.push(pendingSnapshot);
+
       if(history.length > 50) history.shift();
+
       pendingSnapshot = null;
+
       updateUndoBtn();
+
     }
+
   }
+
   function updateUndoBtn(){
+
     if(history.length === 0){ undoBtn.classList.add('disabled'); }
+
     else { undoBtn.classList.remove('disabled'); }
+
   }
+
   updateUndoBtn();
 
+
+
   /* ---------------- fonts ---------------- */
+
   function applyFonts(){
+
     Object.keys(state.fonts).forEach(function(id){
+
       var el = id === 'ticker' ? document.getElementById('tickerWrap') : document.getElementById('w-'+id);
+
       if(!el) return;
+
       var f = state.fonts[id] || {family:"", scale:1};
+
       if(f.family){ el.style.setProperty('--wfont', f.family); }
+
       else { el.style.removeProperty('--wfont'); }
+
       el.style.setProperty('--wscale', f.scale || 1);
+
     });
+
   }
+
   document.querySelectorAll('.font-select').forEach(function(sel){
+
     FONT_OPTIONS.forEach(function(opt){
+
       var o = document.createElement('option');
+
       o.value = opt.value; o.textContent = opt.label;
+
       sel.appendChild(o);
+
     });
+
   });
+
   function syncFontControls(){
+
     document.querySelectorAll('.font-select').forEach(function(sel){
+
       var id = sel.getAttribute('data-id');
+
       sel.value = (state.fonts[id] && state.fonts[id].family) || FONT_OPTIONS[0].value;
+
     });
+
     document.querySelectorAll('.font-scale').forEach(function(rng){
+
       var id = rng.getAttribute('data-id');
+
       rng.value = (state.fonts[id] && state.fonts[id].scale) || 1;
+
     });
+
   }
+
   syncFontControls();
+
   applyFonts();
 
+
+
   document.querySelectorAll('.font-select').forEach(function(sel){
+
     var id = sel.getAttribute('data-id');
+
     sel.addEventListener('mousedown', beginEdit);
+
     sel.addEventListener('focus', beginEdit);
+
     sel.addEventListener('change', function(){
+
       beginEdit();
+
       state.fonts[id].family = sel.value;
+
       saveState();
+
       applyFonts();
+
       commitEdit();
+
     });
+
   });
+
   document.querySelectorAll('.font-scale').forEach(function(rng){
+
     var id = rng.getAttribute('data-id');
+
     rng.addEventListener('pointerdown', beginEdit);
+
     rng.addEventListener('input', function(){
+
       state.fonts[id].scale = Number(rng.value);
+
       saveState();
+
       applyFonts();
+
     });
+
     rng.addEventListener('change', commitEdit);
+
   });
+
+
 
   /* ---------------- apply text/dates ---------------- */
+
   document.querySelectorAll('[data-key]').forEach(function(el){
+
     var key = el.getAttribute('data-key');
+
     if(el.tagName === 'INPUT'){
+
       if(state.dates.hasOwnProperty(key)) el.value = state.dates[key] || '';
+
     } else {
+
       if(state.text.hasOwnProperty(key)) el.textContent = state.text[key];
+
     }
+
   });
+
   document.getElementById('tickerTextInput').value = state.text['ticker-text'];
+
   document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
+
   document.getElementById('calLinkInput').value = state.calLink;
 
+
+
   /* ---------------- clock ---------------- */
+
   var dayNames = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+
   var monNames = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
   function tickClock(){
+
     var now = new Date();
+
     var h = now.getHours();
+
     var ampm = h >= 12 ? 'PM' : 'AM';
+
     var h12 = h % 12; if(h12 === 0) h12 = 12;
+
     var m = String(now.getMinutes()).padStart(2,'0');
+
     document.querySelector('#w-clock .hm').textContent = h12 + ':' + m;
+
     document.querySelector('#w-clock .ampm').textContent = ampm;
+
     document.querySelector('#w-clock .day').textContent = dayNames[now.getDay()];
+
     document.querySelector('#w-clock .date').textContent = monNames[now.getMonth()] + ' ' + now.getDate();
 
+
+
     // countdowns
+
     updateCountdown('vacation', state.dates['vacation-date']);
+
     updateCountdown('christmas', state.dates['christmas-date']);
+
     updateCountdown('halloween', state.dates['halloween-date']);
+
   }
+
   function updateCountdown(id, dateStr){
+
     var el = document.querySelector('#w-'+id+' .cd-days');
+
     if(!el) return;
+
     if(!dateStr){ el.textContent = '--'; return; }
+
     var target = new Date(dateStr + 'T00:00:00');
+
     var now = new Date();
+
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     var diffDays = Math.round((target - today) / 86400000);
+
     if(diffDays < 0){ el.textContent = 'today!'; }
+
     else if(diffDays === 0){ el.textContent = 'today!'; }
+
     else { el.textContent = diffDays; }
+
   }
+
   tickClock();
+
   setInterval(tickClock, 1000 * 15);
 
+
+
   /* ---------------- countdown date inputs ---------------- */
+
   document.querySelectorAll('.cd-date').forEach(function(inp){
+
     inp.addEventListener('focus', beginEdit);
+
     inp.addEventListener('change', function(){
+
       beginEdit();
+
       var key = inp.getAttribute('data-key');
+
       state.dates[key] = inp.value;
+
       saveState();
+
       tickClock();
+
       commitEdit();
+
     });
+
   });
+
+
 
   /* ---------------- editable labels ---------------- */
+
   document.querySelectorAll('.cd-label').forEach(function(el){
+
     el.addEventListener('focus', beginEdit);
+
     el.addEventListener('blur', function(){
+
       beginEdit();
+
       var key = el.getAttribute('data-key');
+
       state.text[key] = el.textContent.trim() || state.text[key];
+
       el.textContent = state.text[key];
+
       saveState();
+
       commitEdit();
+
     });
+
   });
+
+
 
   /* ---------------- calendar link (Google embed OR Apple/iCloud/Outlook ICS feed) ---------------- */
+
   var calFrame = document.getElementById('calFrame');
+
   var calEmpty = document.getElementById('calEmpty');
+
   var calAgenda = document.getElementById('calAgenda');
+
   var calStatus = document.getElementById('calStatus');
+
   var calGrid = document.getElementById('calGrid');
+
   var calList = document.getElementById('calList');
+
   var calRefreshTimer = null;
 
+
+
   function showCalPane(which){
+
     calFrame.style.display = which === 'frame' ? 'block' : 'none';
+
     calAgenda.style.display = which === 'agenda' ? 'flex' : 'none';
+
     calEmpty.style.display = which === 'empty' ? 'flex' : 'none';
+
   }
+
+
 
   function detectCalMode(url){
+
     return /calendar\.google\.com/i.test(url) ? 'google' : 'ics';
+
   }
+
   function extractEmbedLink(raw){
+
     raw = (raw || '').trim();
+
     var match = raw.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
+
     if(match){
+
       return match[1].replace(/&amp;/g, '&');
+
     }
+
     return raw;
+
   }
+
   function normalizeIcsUrl(url){
+
     if(url.indexOf('webcal://') === 0) return 'https://' + url.slice('webcal://'.length);
+
     return url;
+
   }
+
+
 
   function unfoldIcs(text){
+
     return text.replace(/\r\n/g, '\n').split('\n').reduce(function(lines, line){
+
       if((line[0] === ' ' || line[0] === '\t') && lines.length){
+
         lines[lines.length-1] += line.slice(1);
+
       } else {
+
         lines.push(line);
+
       }
+
       return lines;
+
     }, []);
+
   }
+
+
 
   function parseIcsDate(val, isDateOnly){
+
     // val like 20260101 or 20260101T090000 or 20260101T090000Z
+
     var y = +val.slice(0,4), mo = +val.slice(4,6)-1, d = +val.slice(6,8);
+
     if(isDateOnly || val.length <= 8){ return {date:new Date(y,mo,d), allDay:true}; }
+
     var h = +val.slice(9,11), mi = +val.slice(11,13), s = +val.slice(13,15) || 0;
+
     if(val[val.length-1] === 'Z'){
+
       return {date:new Date(Date.UTC(y,mo,d,h,mi,s)), allDay:false};
+
     }
+
     return {date:new Date(y,mo,d,h,mi,s), allDay:false};
+
   }
+
+
 
   function parseIcs(text){
+
     var lines = unfoldIcs(text);
+
     var events = [];
+
     var cur = null;
+
     lines.forEach(function(line){
+
       if(line === 'BEGIN:VEVENT'){ cur = {}; return; }
+
       if(line === 'END:VEVENT'){ if(cur) events.push(cur); cur = null; return; }
+
       if(!cur) return;
+
       var idx = line.indexOf(':');
+
       if(idx === -1) return;
+
       var keyPart = line.slice(0, idx);
+
       var value = line.slice(idx+1);
+
       var key = keyPart.split(';')[0];
+
       var isDateOnly = /VALUE=DATE(?!-TIME)/.test(keyPart);
+
       if(key === 'SUMMARY') cur.summary = value.replace(/\\,/g,',').replace(/\\n/gi,' ');
+
       else if(key === 'DTSTART') cur.dtstart = parseIcsDate(value, isDateOnly);
+
       else if(key === 'DTEND') cur.dtend = parseIcsDate(value, isDateOnly);
+
       else if(key === 'RRULE') cur.rrule = value;
+
       else if(key === 'EXDATE') { cur.exdate = cur.exdate || []; cur.exdate.push(value.split(',')[0]); }
+
     });
+
     return events;
+
   }
+
+
 
   function parseRrule(str){
+
     var parts = {};
+
     str.split(';').forEach(function(p){
+
       var kv = p.split('=');
+
       parts[kv[0]] = kv[1];
+
     });
+
     return parts;
+
   }
+
   var DOW = {SU:0,MO:1,TU:2,WE:3,TH:4,FR:5,SA:6};
 
+
+
   function addUnit(date, freq, interval){
+
     var d = new Date(date);
+
     if(freq === 'DAILY') d.setDate(d.getDate()+interval);
+
     else if(freq === 'WEEKLY') d.setDate(d.getDate()+7*interval);
+
     else if(freq === 'MONTHLY') d.setMonth(d.getMonth()+interval);
+
     else if(freq === 'YEARLY') d.setFullYear(d.getFullYear()+interval);
+
     return d;
+
   }
+
+
 
   // expand an event into individual occurrence dates within [rangeStart, rangeEnd]
+
   function expandEvent(ev, rangeStart, rangeEnd){
+
     var out = [];
+
     if(!ev.dtstart) return out;
+
     var duration = (ev.dtend ? ev.dtend.date - ev.dtstart.date : 0);
+
     if(!ev.rrule){
+
       if(ev.dtstart.date <= rangeEnd && (ev.dtend ? ev.dtend.date : ev.dtstart.date) >= rangeStart){
+
         out.push({start:ev.dtstart.date, allDay:ev.dtstart.allDay, summary:ev.summary||'(untitled)'});
+
       }
+
       return out;
+
     }
+
     var r = parseRrule(ev.rrule);
+
     var freq = r.FREQ;
+
     var interval = parseInt(r.INTERVAL || '1', 10);
+
     var count = r.COUNT ? parseInt(r.COUNT,10) : null;
+
     var until = r.UNTIL ? parseIcsDate(r.UNTIL, r.UNTIL.length<=8).date : null;
+
     var exSet = {};
+
     (ev.exdate||[]).forEach(function(x){ exSet[x.slice(0,8)] = true; });
+
     var byday = r.BYDAY ? r.BYDAY.split(',') : null;
+
     var cursor = new Date(ev.dtstart.date);
+
     var n = 0, safety = 0;
+
     while(cursor <= rangeEnd && safety < 500){
+
       safety++;
+
       if(count !== null && n >= count) break;
+
       if(until && cursor > until) break;
+
       var occurrences = [cursor];
+
       if(freq === 'WEEKLY' && byday){
+
         occurrences = byday.map(function(code){
+
           var target = DOW[code];
+
           var base = new Date(cursor);
+
           var diff = (target - base.getDay() + 7) % 7;
+
           var dd = new Date(base); dd.setDate(base.getDate()+diff);
+
           return dd;
+
         });
+
       }
+
       occurrences.forEach(function(occDate){
+
         if(count !== null && n >= count) return;
+
         if(until && occDate > until) return;
+
         var key = occDate.getFullYear()+String(occDate.getMonth()+1).padStart(2,'0')+String(occDate.getDate()).padStart(2,'0');
+
         if(exSet[key]) return;
+
         if(occDate >= rangeStart && occDate <= rangeEnd){
+
           var start = new Date(occDate);
+
           if(!ev.dtstart.allDay){
+
             start.setHours(ev.dtstart.date.getHours(), ev.dtstart.date.getMinutes(), 0, 0);
+
           }
+
           out.push({start:start, allDay:ev.dtstart.allDay, summary:ev.summary||'(untitled)'});
+
         }
+
         n++;
+
       });
+
       cursor = addUnit(cursor, freq, interval);
+
     }
+
     return out;
+
   }
+
+
 
   function fetchWithFallback(url){
+
     var attempts = [
+
       url,
+
       'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+
       'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+
       'https://corsproxy.io/?url=' + encodeURIComponent(url)
+
     ];
+
     var i = 0;
+
     function fetchWithTimeout(u, ms){
+
       var controller = new AbortController();
+
       var timer = setTimeout(function(){ controller.abort(); }, ms);
+
       return fetch(u, {cache:'no-store', signal: controller.signal}).finally(function(){
+
         clearTimeout(timer);
+
       });
+
     }
+
     function tryNext(){
+
       if(i >= attempts.length) return Promise.resolve(null);
+
       var attemptUrl = attempts[i]; i++;
+
       return fetchWithTimeout(attemptUrl, 8000).then(function(res){
+
         if(!res.ok) return tryNext();
+
         return res.text().then(function(txt){
+
           if(txt && txt.indexOf('BEGIN:VCALENDAR') !== -1) return txt;
+
           return tryNext();
+
         });
+
       }).catch(function(){ return tryNext(); });
+
     }
+
     return tryNext();
+
   }
+
+
 
   var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
   var DOW_LABELS = ['S','M','T','W','T','F','S'];
 
+
+
   function renderAgenda(events){
+
     var now = new Date();
+
     var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     var gridStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
     gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
     var monthEnd = new Date(now.getFullYear(), now.getMonth()+1, 0);
+
     var gridEnd = new Date(monthEnd);
+
     gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay()));
+
     var listEnd = new Date(todayStart); listEnd.setDate(listEnd.getDate() + 60);
+
     var rangeEnd = gridEnd > listEnd ? gridEnd : listEnd;
 
+
+
     var occurrences = [];
+
     events.forEach(function(ev){
+
       occurrences = occurrences.concat(expandEvent(ev, gridStart, rangeEnd));
+
     });
+
+
 
     // ---- month grid ----
+
     var dayHasEvent = {};
+
     occurrences.forEach(function(o){
+
       var k = o.start.getFullYear()+'-'+o.start.getMonth()+'-'+o.start.getDate();
+
       dayHasEvent[k] = true;
+
     });
+
     var html = '<div class="calMonthLabel">' + MONTH_NAMES[now.getMonth()] + ' ' + now.getFullYear() + '</div>';
+
     DOW_LABELS.forEach(function(l){ html += '<div class="calGridHead">'+l+'</div>'; });
+
     var cur = new Date(gridStart);
+
     while(cur <= gridEnd){
+
       var inMonth = cur.getMonth() === now.getMonth();
+
       var isToday = cur.getTime() === todayStart.getTime();
+
       var k = cur.getFullYear()+'-'+cur.getMonth()+'-'+cur.getDate();
+
       html += '<div class="calDay' + (inMonth?' inMonth':'') + (isToday?' today':'') + '">' + cur.getDate() +
+
         (dayHasEvent[k] ? '<span class="dot"></span>' : '') + '</div>';
+
       cur.setDate(cur.getDate()+1);
+
     }
+
     calGrid.innerHTML = html;
 
+
+
     // ---- upcoming list ----
+
     var upcoming = occurrences.filter(function(o){
+
       return o.allDay ? o.start >= todayStart : o.start >= now || (o.start >= todayStart && o.allDay);
+
     }).sort(function(a,b){ return a.start - b.start; }).slice(0, 10);
+
     var listHtml = '<div class="calListTitle">UPCOMING</div>';
+
     if(upcoming.length === 0){
+
       listHtml += '<div class="calEmptyList">Nothing on the calendar in the next 60 days.</div>';
+
     } else {
+
       upcoming.forEach(function(o){
+
         var when;
+
         if(o.allDay){
+
           when = (o.start.getTime() === todayStart.getTime()) ? 'Today' : (MONTH_NAMES[o.start.getMonth()].slice(0,3) + ' ' + o.start.getDate());
+
         } else {
+
           var h = o.start.getHours(), ap = h>=12?'PM':'AM', h12=h%12; if(h12===0) h12=12;
+
           var mm = String(o.start.getMinutes()).padStart(2,'0');
+
           var dayLabel = (o.start.toDateString() === now.toDateString()) ? 'Today' : (MONTH_NAMES[o.start.getMonth()].slice(0,3) + ' ' + o.start.getDate());
+
           when = dayLabel + ' ' + h12 + ':' + mm + ap;
+
         }
+
         listHtml += '<div class="calEvt"><div class="evtWhen">'+when+'</div><div class="evtName">'+escapeHtml(o.summary)+'</div></div>';
+
       });
+
     }
+
     calList.innerHTML = listHtml;
+
     showCalPane('agenda');
+
   }
+
+
 
   function escapeHtml(s){
+
     var d = document.createElement('div');
+
     d.textContent = s;
+
     return d.innerHTML;
+
   }
+
+
 
   function loadCalendar(){
+
     if(calRefreshTimer) clearTimeout(calRefreshTimer);
+
     if(!state.calLink){
+
       showCalPane('empty');
+
       calEmpty.textContent = "No calendar linked yet. Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.";
+
       calStatus.textContent = '';
-      return;
-    }
-    var mode = detectCalMode(state.calLink);
-    if(mode === 'google'){
-      calFrame.src = state.calLink;
-      showCalPane('frame');
-      calStatus.textContent = 'Google Calendar linked.';
-      return;
-    }
-    calStatus.textContent = 'Loading calendar…';
-    showCalPane('empty');
-    calEmpty.textContent = 'Loading your calendar…';
-    var url = normalizeIcsUrl(state.calLink);
-    fetchWithFallback(url).then(function(text){
-      if(!text){
-        calStatus.textContent = "Couldn't load that calendar link. Double-check it's a public share link and try again.";
-        showCalPane('empty');
-        calEmpty.textContent = "Couldn't load that calendar. In the Calendar app: right-click the calendar → Share Calendar → turn on Public Calendar → Copy Link, then paste it above and hit Save again. If it still fails, the calendar server may be blocking outside access.";
-        return;
-      }
-      var events = parseIcs(text);
-      renderAgenda(events);
-      calStatus.textContent = 'Calendar linked · ' + events.length + ' event(s) found.';
-      calRefreshTimer = setTimeout(loadCalendar, 15 * 60 * 1000);
-    });
-  }
 
-  loadCalendar();
-  document.getElementById('calLinkInput').addEventListener('focus', beginEdit);
-  document.getElementById('calLinkSave').addEventListener('click', function(){
-    beginEdit();
-    var v = extractEmbedLink(document.getElementById('calLinkInput').value);
-    state.calLink = v;
-    document.getElementById('calLinkInput').value = v;
-    saveState();
-    loadCalendar();
-    commitEdit();
-  });
+      ret 
 
-  /* ---------------- ticker ---------------- */
-  var track = document.getElementById('tickerTrack');
-  function renderTicker(){
-    track.textContent = state.text['ticker-text'];
-    // restart animation with duration based on text length + speed
-    var speed = Number(state.tickerSpeed) || 25; // px-ish scale, higher = faster
-    var distance = track.scrollWidth + window.innerWidth;
-    var duration = distance / (speed * 4);
-    track.style.animation = 'none';
-    void track.offsetWidth;
-    track.style.animation = 'tickerScroll ' + duration + 's linear infinite';
-  }
-  var styleTag = document.createElement('style');
-  styleTag.textContent = '@keyframes tickerScroll{ from{ transform:translateX(0);} to{ transform:translateX(-100%);} }';
-  document.head.appendChild(styleTag);
-  renderTicker();
-
-  var tickerTextInput = document.getElementById('tickerTextInput');
-  tickerTextInput.addEventListener('focus', beginEdit);
-  tickerTextInput.addEventListener('input', function(e){
-    state.text['ticker-text'] = e.target.value || ' ';
-    saveState();
-    renderTicker();
-  });
-  tickerTextInput.addEventListener('blur', commitEdit);
-
-  var tickerSpeedInput = document.getElementById('tickerSpeedInput');
-  tickerSpeedInput.addEventListener('pointerdown', beginEdit);
-  tickerSpeedInput.addEventListener('input', function(e){
-    state.tickerSpeed = Number(e.target.value);
-    saveState();
-    renderTicker();
-  });
-  tickerSpeedInput.addEventListener('change', commitEdit);
-
-  /* ---------------- edit mode toggle ---------------- */
-  var editToggle = document.getElementById('editToggle');
-  editToggle.addEventListener('click', function(){
-    body.classList.toggle('edit-mode');
-    editToggle.classList.toggle('active');
-    document.querySelectorAll('.cd-label').forEach(function(el){
-      el.setAttribute('contenteditable', body.classList.contains('edit-mode') ? 'true' : 'false');
-    });
-  });
-
-  /* ---------------- fullscreen ---------------- */
-  var fsToggle = document.getElementById('fsToggle');
-  fsToggle.addEventListener('click', function(){
-    if(!document.fullscreenElement){
-      document.documentElement.requestFullscreen().catch(function(){});
-    } else {
-      document.exitFullscreen();
-    }
-  });
-  document.addEventListener('fullscreenchange', function(){
-    fsToggle.textContent = document.fullscreenElement ? '⤫' : '⛶';
-  });
-
-  /* ---------------- drag to reposition ---------------- */
-  var dragging = null;
-  var startX, startY, startLeft, startTop, stageRect;
-
-  document.querySelectorAll('.dragHandle').forEach(function(handle){
-    handle.addEventListener('pointerdown', function(e){
-      if(!body.classList.contains('edit-mode')) return;
-      var widget = handle.closest('.widget');
-      dragging = widget;
-      widget.classList.add('dragging');
-      stageRect = stage.getBoundingClientRect();
-      startX = e.clientX; startY = e.clientY;
-      var rect = widget.getBoundingClientRect();
-      startLeft = ((rect.left - stageRect.left) / stageRect.width) * 100;
-      startTop = ((rect.top - stageRect.top) / stageRect.height) * 100;
-      handle.setPointerCapture(e.pointerId);
-      beginEdit();
-      e.preventDefault();
-    });
-    handle.addEventListener('pointermove', function(e){
-      if(!dragging) return;
-      var dxPct = ((e.clientX - startX) / stageRect.width) * 100;
-      var dyPct = ((e.clientY - startY) / stageRect.height) * 100;
-      var newLeft = Math.max(0, Math.min(96, startLeft + dxPct));
-      var newTop = Math.max(0, Math.min(94, startTop + dyPct));
-      dragging.style.left = newLeft + '%';
-      dragging.style.top = newTop + '%';
-    });
-    handle.addEventListener('pointerup', function(e){
-      if(!dragging) return;
-      var id = dragging.getAttribute('data-id');
-      var left = parseFloat(dragging.style.left);
-      var top = parseFloat(dragging.style.top);
-      state.positions[id].left = left;
-      state.positions[id].top = top;
-      saveState();
-      dragging.classList.remove('dragging');
-      dragging = null;
-      commitEdit();
-    });
-  });
-
-  /* ---------------- undo button ---------------- */
-  function refreshAll(){
-    applyPositions();
-    document.querySelectorAll('[data-key]').forEach(function(el){
-      var key = el.getAttribute('data-key');
-      if(el.tagName === 'INPUT'){
-        if(state.dates.hasOwnProperty(key)) el.value = state.dates[key] || '';
-      } else {
-        if(state.text.hasOwnProperty(key)) el.textContent = state.text[key];
-      }
-    });
-    document.getElementById('tickerTextInput').value = state.text['ticker-text'];
-    document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
-    document.getElementById('calLinkInput').value = state.calLink;
-    syncFontControls();
-    applyFonts();
-    loadCalendar();
-    renderTicker();
-    tickClock();
-  }
-  undoBtn.addEventListener('click', function(){
-    if(history.length === 0) return;
-    var snap = history.pop();
-    state = JSON.parse(snap);
-    saveState();
-    refreshAll();
-    updateUndoBtn();
-  });
-
-  /* ---------------- falling stars background ---------------- */
-  var canvas = document.getElementById('stars');
-  var ctx = canvas.getContext('2d');
-  var particles = [];
-  var PARTICLE_COUNT = 140;
-
-  function resizeCanvas(){
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  function makeParticle(randomY){
-    return {
-      x: Math.random() * window.innerWidth,
-      y: randomY ? Math.random() * window.innerHeight : -10,
-      r: Math.random() * 1.6 + 0.4,
-      speed: Math.random() * 0.35 + 0.08,
-      drift: (Math.random() - 0.5) * 0.15,
-      opacity: Math.random() * 0.6 + 0.25
-    };
-  }
-  function initParticles(){
-    particles = [];
-    for(var i=0;i<PARTICLE_COUNT;i++){ particles.push(makeParticle(true)); }
-  }
-  function animateStars(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    for(var i=0;i<particles.length;i++){
-      var p = particles[i];
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(255,255,255,' + p.opacity + ')';
-      ctx.fill();
-      p.y += p.speed;
-      p.x += p.drift;
-      if(p.y > window.innerHeight + 10){
-        particles[i] = makeParticle(false);
-      }
-    }
-    requestAnimationFrame(animateStars);
-  }
-  resizeCanvas();
-  initParticles();
-  animateStars();
-  window.addEventListener('resize', function(){
-    resizeCanvas();
-  });
-
-})();
-</script>
-</body>
-</html>
