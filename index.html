@@ -128,18 +128,9 @@
     display:none; gap:6px; margin-bottom:6px; align-items:center;
   }
   body.edit-mode .calw .calLinkRow{ display:flex; }
-  .calw .calLinkRow input{
+  .calw .calLinkRow input[type="file"]{
     flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
-    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
-  }
-  .calw .calLinkRow button{
-    background:var(--white); color:#000; border:none; border-radius:6px;
-    padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
-  }
-  .calw iframe{
-    width:100%; flex:1; border:1px solid rgba(255,255,255,0.18); border-radius:10px;
-    background:#000;
-    filter: invert(94%) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+    color:#fff; font-size:11px; border-radius:6px; padding:4px 6px; font-family:var(--font);
   }
   .calStatus{
     display:none; font-size:11px; color:var(--dim); margin-bottom:6px; min-height:14px;
@@ -253,13 +244,11 @@
   <div class="widget calw" id="w-calendar" data-id="calendar">
     <div class="dragHandle">⠿ move</div>
     <div class="calLinkRow">
-      <input type="text" id="calLinkInput" placeholder="Paste Google Embed or iCal (.ics) link here">
-      <button id="calLinkSave">Save</button>
+      <input type="file" id="calFileInput" accept=".ics">
     </div>
     <div class="calStatus" id="calStatus"></div>
     <div class="calBody" id="calBody">
-      <div class="calEmpty" id="calEmpty">No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.</div>
-      <iframe id="calFrame" style="display:none;"></iframe>
+      <div class="calEmpty" id="calEmpty">No calendar loaded yet.<br>Tap the pencil (top left) to turn on edit mode, then select your .ics file above.</div>
       <div class="calAgenda" id="calAgenda" style="display:none;">
         <div class="calGrid" id="calGrid"></div>
         <div class="calList" id="calList"></div>
@@ -281,7 +270,7 @@
 <div id="editControls">
   <div class="iconBtn" id="editToggle" title="Edit layout">✎</div>
   <div class="iconBtn disabled" id="undoBtn" title="Undo last change">↺</div>
-  <span id="editHint">Edit mode — drag by the handle, edit text &amp; dates, tweak fonts</span>
+  <span id="editHint">Edit mode — drag by handle, choose .ics file, tweak fonts</span>
 </div>
 <div id="topControls">
   <div class="iconBtn" id="fsToggle" title="Fullscreen">⛶</div>
@@ -291,7 +280,7 @@
 (function(){
   "use strict";
 
-  var STORAGE_KEY = "dakboard_layout_v1";
+  var STORAGE_KEY = "dakboard_layout_v2";
   var stage = document.getElementById('stage');
   var body = document.body;
 
@@ -314,7 +303,7 @@
       "christmas-date": nextDec25(),
       "halloween-date": nextDateThisYearOrNext(9,31)
     },
-    calLink: "",
+    calText: "",
     tickerSpeed: 25,
     fonts: {
       vacation:  {family:"", scale:1},
@@ -360,7 +349,7 @@
       merged.positions = Object.assign(merged.positions, parsed.positions || {});
       merged.text = Object.assign(merged.text, parsed.text || {});
       merged.dates = Object.assign(merged.dates, parsed.dates || {});
-      merged.calLink = parsed.calLink || "";
+      merged.calText = parsed.calText || "";
       merged.tickerSpeed = parsed.tickerSpeed || 25;
       merged.fonts = Object.assign(merged.fonts, parsed.fonts || {});
       return merged;
@@ -468,7 +457,6 @@
   });
   document.getElementById('tickerTextInput').value = state.text['ticker-text'];
   document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
-  document.getElementById('calLinkInput').value = state.calLink;
 
   var dayNames = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   var monNames = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -524,30 +512,15 @@
     });
   });
 
-  var calFrame = document.getElementById('calFrame');
   var calEmpty = document.getElementById('calEmpty');
   var calAgenda = document.getElementById('calAgenda');
   var calStatus = document.getElementById('calStatus');
   var calGrid = document.getElementById('calGrid');
   var calList = document.getElementById('calList');
-  var calRefreshTimer = null;
 
   function showCalPane(which){
-    calFrame.style.display = which === 'frame' ? 'block' : 'none';
     calAgenda.style.display = which === 'agenda' ? 'flex' : 'none';
     calEmpty.style.display = which === 'empty' ? 'flex' : 'none';
-  }
-
-  function extractEmbedLink(raw){
-    raw = (raw || '').trim();
-    var match = raw.match(/<iframe[^>]*\ssrc=["']([^"']+)["']/i);
-    if(match) return match[1].replace(/&amp;/g, '&');
-    return raw;
-  }
-
-  function normalizeIcsUrl(url){
-    if(url.indexOf('webcal://') === 0) return 'https://' + url.slice('webcal://'.length);
-    return url;
   }
 
   function unfoldIcs(text){
@@ -665,34 +638,6 @@
     return out;
   }
 
-  function fetchWithFallback(url){
-    var attempts = [
-      'https://corsproxy.io/?url=' + encodeURIComponent(url),
-      'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-      url
-    ];
-    var i = 0;
-    function fetchWithTimeout(u, ms){
-      var controller = new AbortController();
-      var timer = setTimeout(function(){ controller.abort(); }, ms);
-      return fetch(u, {cache:'no-store', signal: controller.signal}).finally(function(){
-        clearTimeout(timer);
-      });
-    }
-    function tryNext(){
-      if(i >= attempts.length) return Promise.resolve(null);
-      var attemptUrl = attempts[i]; i++;
-      return fetchWithTimeout(attemptUrl, 5000).then(function(res){
-        if(!res.ok) return tryNext();
-        return res.text().then(function(txt){
-          if(txt && (txt.indexOf('BEGIN:VCALENDAR') !== -1 || txt.indexOf('BEGIN:VEVENT') !== -1)) return txt;
-          return tryNext();
-        });
-      }).catch(function(){ return tryNext(); });
-    }
-    return tryNext();
-  }
-
   var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var DOW_LABELS = ['S','M','T','W','T','F','S'];
 
@@ -762,53 +707,39 @@
   }
 
   function loadCalendar(){
-    if(calRefreshTimer) clearTimeout(calRefreshTimer);
-    if(!state.calLink){
+    if(!state.calText){
       showCalPane('empty');
-      calEmpty.innerHTML = "No calendar linked yet.<br>Tap the pencil (top left) to turn on edit mode, then paste your calendar link above.";
+      calEmpty.innerHTML = "No calendar loaded yet.<br>Tap the pencil (top left) to turn on edit mode, then select your .ics file above.";
       calStatus.textContent = '';
       return;
     }
 
-    var raw = state.calLink.trim();
-    var embedUrl = extractEmbedLink(raw);
-
-    if(/calendar\.google\.com\/calendar\/embed/i.test(embedUrl)){
-      calStatus.textContent = '';
-      calFrame.src = embedUrl;
-      showCalPane('frame');
-      return;
-    }
-
-    var icsUrl = normalizeIcsUrl(embedUrl);
-    calStatus.textContent = 'Loading calendar events...';
-
-    fetchWithFallback(icsUrl).then(function(text){
-      if(!text){
-        showCalPane('empty');
-        calStatus.textContent = 'Error: Could not load calendar feed.';
-        calEmpty.innerHTML = "Failed to load feed.<br>Make sure your iCal URL is public/shared properly.";
-        return;
-      }
-      var events = parseIcs(text);
-      calStatus.textContent = 'Synced ' + events.length + ' base events';
+    calStatus.textContent = 'Parsing calendar events...';
+    try {
+      var events = parseIcs(state.calText);
+      calStatus.textContent = 'Synced ' + events.length + ' events';
       renderAgenda(events);
-      calRefreshTimer = setTimeout(loadCalendar, 30 * 60 * 1000);
-    }).catch(function(err){
+    } catch(err){
       showCalPane('empty');
-      calStatus.textContent = 'Failed to parse calendar.';
-    });
+      calStatus.textContent = 'Failed to parse calendar file.';
+    }
   }
   loadCalendar();
 
-  document.getElementById('calLinkSave').addEventListener('click', function(){
-    beginEdit();
-    state.calLink = document.getElementById('calLinkInput').value.trim();
-    saveState();
-    loadCalendar();
-    commitEdit();
-    calStatus.textContent = 'Saved!';
-    setTimeout(function(){ if(calStatus.textContent === 'Saved!') calStatus.textContent = ''; }, 2000);
+  document.getElementById('calFileInput').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(evt){
+      beginEdit();
+      state.calText = evt.target.result;
+      saveState();
+      loadCalendar();
+      commitEdit();
+      calStatus.textContent = 'Loaded!';
+      setTimeout(function(){ if(calStatus.textContent === 'Loaded!') calStatus.textContent = ''; }, 2000);
+    };
+    reader.readAsText(file);
   });
 
   var tickerTrack = document.getElementById('tickerTrack');
@@ -908,7 +839,6 @@
     applyFonts();
     document.getElementById('tickerTextInput').value = state.text['ticker-text'] || '';
     document.getElementById('tickerSpeedInput').value = state.tickerSpeed || 25;
-    document.getElementById('calLinkInput').value = state.calLink || '';
     updateTickerText(state.text['ticker-text'] || '');
     syncFontControls();
     loadCalendar();
