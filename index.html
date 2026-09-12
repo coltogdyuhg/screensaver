@@ -122,6 +122,36 @@
   .clockw .date{ font-size:calc(16px * var(--wscale, 1)); color:var(--dim); margin-top:2px; letter-spacing:0.03em; }
   .clockw .fontRow{ justify-content:flex-start; }
 
+  /* ---------- weather widget ---------- */
+  .weatherw{ padding:10px; }
+  .weatherw .fontRow{ justify-content:flex-start; }
+  .wxLocRow{
+    display:none; gap:6px; margin-bottom:6px; align-items:center; flex-wrap:wrap;
+  }
+  body.edit-mode .wxLocRow{ display:flex; }
+  .wxLocRow input{
+    flex:1; min-width:120px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3);
+    color:#fff; font-size:12px; border-radius:6px; padding:6px 8px; font-family:var(--font);
+  }
+  .wxLocRow button{
+    background:var(--white); color:#000; border:none; border-radius:6px;
+    padding:6px 10px; font-size:12px; cursor:pointer; font-weight:600;
+  }
+  .wxStatus{ display:none; font-size:11px; color:var(--dim); margin-bottom:4px; min-height:14px; }
+  body.edit-mode .wxStatus{ display:block; }
+  .wxEmpty{ color:var(--dim); font-size:13px; max-width:230px; }
+  .wxNow{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .wxNowIcon{ font-size:calc(34px * var(--wscale, 1)); line-height:1; }
+  .wxNowTemp{ font-size:calc(30px * var(--wscale, 1)); font-weight:300; line-height:1; }
+  .wxNowPlace{ font-size:calc(12px * var(--wscale, 1)); color:var(--dim); margin-top:2px; display:block; }
+  .wxWeek{ display:flex; gap:8px; }
+  .wxWeek .wxDay{ flex:1; text-align:center; }
+  .wxWeek .wxDay .wxDayName{ font-size:calc(10px * var(--wscale, 1)); color:var(--dim); letter-spacing:0.04em; }
+  .wxWeek .wxDay .wxIcon{ font-size:calc(18px * var(--wscale, 1)); margin:3px 0; line-height:1; }
+  .wxWeek .wxDay .wxTemps{ font-size:calc(10px * var(--wscale, 1)); white-space:nowrap; }
+  .wxWeek .wxDay .wxHi{ color:#fff; font-weight:600; }
+  .wxWeek .wxDay .wxLo{ color:var(--dim); margin-left:3px; }
+
   /* ---------- calendar widget ---------- */
   .calw{ display:flex; flex-direction:column; }
   .calw .calLinkRow{
@@ -250,6 +280,22 @@
     <div class="fontRow"><select class="font-select" data-id="clock"></select><input type="range" class="font-scale" data-id="clock" min="0.6" max="2" step="0.1"></div>
   </div>
 
+  <div class="widget weatherw" id="w-weather" data-id="weather">
+    <div class="dragHandle">⠿ move</div>
+    <div class="wxLocRow">
+      <input type="text" id="wxLocInput" placeholder="City, State or City, Country (leave blank to use your location)">
+      <button id="wxLocSave">Save</button>
+      <button id="wxGpsBtn">📍 Use my location</button>
+    </div>
+    <div class="wxStatus" id="wxStatus"></div>
+    <div class="wxEmpty" id="wxEmpty">Getting your weather…</div>
+    <div id="wxContent" style="display:none;">
+      <div class="wxNow" id="wxNow"></div>
+      <div class="wxWeek" id="wxWeek"></div>
+    </div>
+    <div class="fontRow"><select class="font-select" data-id="weather"></select><input type="range" class="font-scale" data-id="weather" min="0.6" max="2" step="0.1"></div>
+  </div>
+
   <div class="widget calw" id="w-calendar" data-id="calendar">
     <div class="dragHandle">⠿ move</div>
     <div class="calLinkRow">
@@ -302,6 +348,7 @@
       christmas: {left:36, top:2,  width:28, height:null},
       halloween: {left:70, top:2,  width:28, height:null},
       clock:     {left:2,  top:34, width:28, height:null},
+      weather:   {left:2,  top:57, width:28, height:null},
       calendar:  {left:34, top:14, width:64, height:70}
     },
     text: {
@@ -322,8 +369,10 @@
       christmas: {family:"", scale:1},
       halloween: {family:"", scale:1},
       clock:     {family:"", scale:1},
+      weather:   {family:"", scale:1},
       ticker:    {family:"", scale:1}
-    }
+    },
+    weather: { locationName:"", lat:null, lon:null }
   };
 
   var FONT_OPTIONS = [
@@ -357,7 +406,6 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if(!raw) return JSON.parse(JSON.stringify(defaults));
       var parsed = JSON.parse(raw);
-      // merge shallowly with defaults so new fields don't break old saves
       var merged = JSON.parse(JSON.stringify(defaults));
       merged.positions = Object.assign(merged.positions, parsed.positions || {});
       merged.text = Object.assign(merged.text, parsed.text || {});
@@ -365,6 +413,7 @@
       merged.calLink = parsed.calLink || "";
       merged.tickerSpeed = parsed.tickerSpeed || 25;
       merged.fonts = Object.assign(merged.fonts, parsed.fonts || {});
+      merged.weather = Object.assign(merged.weather, parsed.weather || {});
       return merged;
     }catch(e){
       return JSON.parse(JSON.stringify(defaults));
@@ -490,7 +539,6 @@
     document.querySelector('#w-clock .day').textContent = dayNames[now.getDay()];
     document.querySelector('#w-clock .date').textContent = monNames[now.getMonth()] + ' ' + now.getDate();
 
-    // countdowns
     updateCountdown('vacation', state.dates['vacation-date']);
     updateCountdown('christmas', state.dates['christmas-date']);
     updateCountdown('halloween', state.dates['halloween-date']);
@@ -503,8 +551,7 @@
     var now = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     var diffDays = Math.round((target - today) / 86400000);
-    if(diffDays < 0){ el.textContent = 'today!'; }
-    else if(diffDays === 0){ el.textContent = 'today!'; }
+    if(diffDays <= 0){ el.textContent = 'today!'; }
     else { el.textContent = diffDays; }
   }
   tickClock();
@@ -535,6 +582,186 @@
       commitEdit();
     });
   });
+
+  /* ---------------- weather ---------------- */
+  var wxLocInput = document.getElementById('wxLocInput');
+  var wxStatus = document.getElementById('wxStatus');
+  var wxEmpty = document.getElementById('wxEmpty');
+  var wxContent = document.getElementById('wxContent');
+  var wxNow = document.getElementById('wxNow');
+  var wxWeek = document.getElementById('wxWeek');
+  var wxRefreshTimer = null;
+  wxLocInput.value = state.weather.locationName || '';
+
+  function wxIconFor(code){
+    if(code === 0) return '☀️';
+    if(code === 1 || code === 2) return '🌤️';
+    if(code === 3) return '☁️';
+    if(code === 45 || code === 48) return '🌫️';
+    if(code >= 51 && code <= 57) return '🌦️';
+    if(code >= 61 && code <= 67) return '🌧️';
+    if(code >= 71 && code <= 77) return '🌨️';
+    if(code >= 80 && code <= 82) return '🌦️';
+    if(code === 85 || code === 86) return '🌨️';
+    if(code >= 95) return '⛈️';
+    return '🌡️';
+  }
+  function wxDescFor(code){
+    if(code === 0) return 'Clear';
+    if(code === 1) return 'Mostly clear';
+    if(code === 2) return 'Partly cloudy';
+    if(code === 3) return 'Cloudy';
+    if(code === 45 || code === 48) return 'Foggy';
+    if(code >= 51 && code <= 57) return 'Drizzle';
+    if(code >= 61 && code <= 67) return 'Rain';
+    if(code >= 71 && code <= 77) return 'Snow';
+    if(code >= 80 && code <= 82) return 'Showers';
+    if(code === 85 || code === 86) return 'Snow showers';
+    if(code >= 95) return 'Storms';
+    return '';
+  }
+
+  function showWxMessage(msg){
+    wxEmpty.textContent = msg;
+    wxEmpty.style.display = 'block';
+    wxContent.style.display = 'none';
+  }
+
+  function geocodeCity(name){
+    var url = 'https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(name) + '&count=1';
+    return fetch(url).then(function(res){ return res.json(); }).then(function(data){
+      if(data.results && data.results.length) return data.results[0];
+      // retry with just the part before a comma (e.g. "Pittsburgh, PA" -> "Pittsburgh")
+      if(name.indexOf(',') !== -1){
+        var short = name.split(',')[0].trim();
+        var url2 = 'https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(short) + '&count=1';
+        return fetch(url2).then(function(res2){ return res2.json(); }).then(function(data2){
+          return (data2.results && data2.results.length) ? data2.results[0] : null;
+        });
+      }
+      return null;
+    }).then(function(r){
+      if(!r) return null;
+      var label = r.name + (r.admin1 ? ', ' + r.admin1 : (r.country ? ', ' + r.country : ''));
+      return {lat:r.latitude, lon:r.longitude, label:label};
+    }).catch(function(){ return null; });
+  }
+
+  function fetchWeather(lat, lon){
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+      '&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7&temperature_unit=fahrenheit';
+    return fetch(url).then(function(res){
+      if(!res.ok) throw new Error('bad response');
+      return res.json();
+    });
+  }
+
+  function renderWeather(data){
+    var cw = data.current_weather;
+    wxNow.innerHTML =
+      '<span class="wxNowIcon">' + wxIconFor(cw.weathercode) + '</span>' +
+      '<span><span class="wxNowTemp">' + Math.round(cw.temperature) + '°</span>' +
+      '<span class="wxNowPlace">' + wxDescFor(cw.weathercode) + (state.weather.locationName ? ' · ' + state.weather.locationName : '') + '</span></span>';
+
+    var days = data.daily.time, codes = data.daily.weathercode;
+    var himax = data.daily.temperature_2m_max, lomin = data.daily.temperature_2m_min;
+    var html = '';
+    days.forEach(function(dStr, i){
+      var d = new Date(dStr + 'T00:00:00');
+      var label = (i === 0) ? 'Today' : dayNames[d.getDay()];
+      html += '<div class="wxDay">' +
+        '<div class="wxDayName">' + label + '</div>' +
+        '<div class="wxIcon">' + wxIconFor(codes[i]) + '</div>' +
+        '<div class="wxTemps"><span class="wxHi">' + Math.round(himax[i]) + '°</span><span class="wxLo">' + Math.round(lomin[i]) + '°</span></div>' +
+        '</div>';
+    });
+    wxWeek.innerHTML = html;
+    wxEmpty.style.display = 'none';
+    wxContent.style.display = 'block';
+  }
+
+  function loadWeather(){
+    if(wxRefreshTimer) clearTimeout(wxRefreshTimer);
+    if(state.weather.lat == null || state.weather.lon == null){
+      tryGeolocation();
+      return;
+    }
+    wxStatus.textContent = 'Loading weather…';
+    fetchWeather(state.weather.lat, state.weather.lon).then(function(data){
+      renderWeather(data);
+      wxStatus.textContent = 'Weather for ' + (state.weather.locationName || 'your location') + '.';
+      wxRefreshTimer = setTimeout(loadWeather, 30 * 60 * 1000);
+    }).catch(function(){
+      wxStatus.textContent = "Couldn't load the weather right now.";
+      showWxMessage("Couldn't load the weather. It'll try again automatically, or re-save your city.");
+      wxRefreshTimer = setTimeout(loadWeather, 5 * 60 * 1000);
+    });
+  }
+
+  function tryGeolocation(){
+    if(!window.isSecureContext){
+      showWxMessage("Your browser blocks GPS location on a file opened directly from disk. Host this page online (even a free GitHub Pages / Netlify link works) or type your city above instead.");
+      return;
+    }
+    if(!navigator.geolocation){
+      showWxMessage('Tap the pencil (top left) and type your city to see weather.');
+      return;
+    }
+    showWxMessage('Getting your location…');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      state.weather.lat = pos.coords.latitude;
+      state.weather.lon = pos.coords.longitude;
+      state.weather.locationName = state.weather.locationName || '';
+      saveState();
+      loadWeather();
+    }, function(err){
+      if(err && err.code === 1){
+        showWxMessage('Location access was blocked. Allow location for this page in your browser settings, or type your city above instead.');
+      } else {
+        showWxMessage('Tap the pencil (top left) and type your city to see weather.');
+      }
+    }, {timeout:8000, maximumAge:600000});
+  }
+
+  document.getElementById('wxGpsBtn').addEventListener('click', function(){
+    beginEdit();
+    state.weather.lat = null;
+    state.weather.lon = null;
+    state.weather.locationName = '';
+    wxLocInput.value = '';
+    saveState();
+    tryGeolocation();
+    commitEdit();
+  });
+
+  document.getElementById('wxLocSave').addEventListener('click', function(){
+    beginEdit();
+    var name = wxLocInput.value.trim();
+    if(!name){
+      state.weather.lat = null; state.weather.lon = null; state.weather.locationName = '';
+      saveState();
+      loadWeather();
+      commitEdit();
+      return;
+    }
+    wxStatus.textContent = 'Looking up ' + name + '…';
+    geocodeCity(name).then(function(loc){
+      if(!loc){
+        wxStatus.textContent = "Couldn't find that place. Try including a state or country.";
+        commitEdit();
+        return;
+      }
+      state.weather.lat = loc.lat;
+      state.weather.lon = loc.lon;
+      state.weather.locationName = loc.label;
+      saveState();
+      loadWeather();
+      commitEdit();
+    });
+  });
+  wxLocInput.addEventListener('focus', beginEdit);
+
+  loadWeather();
 
   /* ---------------- calendar link (Google embed OR Apple/iCloud/Outlook ICS feed) ---------------- */
   var calFrame = document.getElementById('calFrame');
@@ -579,7 +806,6 @@
   }
 
   function parseIcsDate(val, isDateOnly){
-    // val like 20260101 or 20260101T090000 or 20260101T090000Z
     var y = +val.slice(0,4), mo = +val.slice(4,6)-1, d = +val.slice(6,8);
     if(isDateOnly || val.length <= 8){ return {date:new Date(y,mo,d), allDay:true}; }
     var h = +val.slice(9,11), mi = +val.slice(11,13), s = +val.slice(13,15) || 0;
@@ -631,11 +857,9 @@
     return d;
   }
 
-  // expand an event into individual occurrence dates within [rangeStart, rangeEnd]
   function expandEvent(ev, rangeStart, rangeEnd){
     var out = [];
     if(!ev.dtstart) return out;
-    var duration = (ev.dtend ? ev.dtend.date - ev.dtstart.date : 0);
     if(!ev.rrule){
       if(ev.dtstart.date <= rangeEnd && (ev.dtend ? ev.dtend.date : ev.dtstart.date) >= rangeStart){
         out.push({start:ev.dtstart.date, allDay:ev.dtstart.allDay, summary:ev.summary||'(untitled)'});
@@ -717,6 +941,12 @@
   var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var DOW_LABELS = ['S','M','T','W','T','F','S'];
 
+  function escapeHtml(s){
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
   function renderAgenda(events){
     var now = new Date();
     var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -733,7 +963,6 @@
       occurrences = occurrences.concat(expandEvent(ev, gridStart, rangeEnd));
     });
 
-    // ---- month grid ----
     var dayHasEvent = {};
     occurrences.forEach(function(o){
       var k = o.start.getFullYear()+'-'+o.start.getMonth()+'-'+o.start.getDate();
@@ -752,9 +981,8 @@
     }
     calGrid.innerHTML = html;
 
-    // ---- upcoming list ----
     var upcoming = occurrences.filter(function(o){
-      return o.allDay ? o.start >= todayStart : o.start >= now || (o.start >= todayStart && o.allDay);
+      return o.allDay ? o.start >= todayStart : o.start >= now;
     }).sort(function(a,b){ return a.start - b.start; }).slice(0, 10);
     var listHtml = '<div class="calListTitle">UPCOMING</div>';
     if(upcoming.length === 0){
@@ -775,12 +1003,6 @@
     }
     calList.innerHTML = listHtml;
     showCalPane('agenda');
-  }
-
-  function escapeHtml(s){
-    var d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
   }
 
   function loadCalendar(){
@@ -832,8 +1054,7 @@
   var track = document.getElementById('tickerTrack');
   function renderTicker(){
     track.textContent = state.text['ticker-text'];
-    // restart animation with duration based on text length + speed
-    var speed = Number(state.tickerSpeed) || 25; // px-ish scale, higher = faster
+    var speed = Number(state.tickerSpeed) || 25;
     var distance = track.scrollWidth + window.innerWidth;
     var duration = distance / (speed * 4);
     track.style.animation = 'none';
@@ -942,9 +1163,11 @@
     document.getElementById('tickerTextInput').value = state.text['ticker-text'];
     document.getElementById('tickerSpeedInput').value = state.tickerSpeed;
     document.getElementById('calLinkInput').value = state.calLink;
+    wxLocInput.value = state.weather.locationName || '';
     syncFontControls();
     applyFonts();
     loadCalendar();
+    loadWeather();
     renderTicker();
     tickClock();
   }
